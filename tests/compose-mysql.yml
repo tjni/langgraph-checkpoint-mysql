@@ -1,0 +1,17 @@
+services:
+  mysql-test:
+    image: mysql:8
+    ports:
+      - "5441:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: mysql
+      MYSQL_DATABASE: mysql
+      MYSQL_USER: mysql
+      MYSQL_PASSWORD: mysql
+    healthcheck:
+      test: mysqladmin -h 127.0.0.1 ping -P 3306 -u mysql -pmysql | grep "mysqld is alive"
+      start_period: 10s
+      timeout: 1s
+      retries: 5
+      interval: 60s
+      start_interval: 1s

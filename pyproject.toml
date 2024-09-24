@@ -1,19 +1,22 @@
 [tool.poetry]
-name = "langgraph-checkpoint-postgres"
-version = "1.0.8"
-description = "Library with a Postgres implementation of LangGraph checkpoint saver."
-authors = []
+name = "langgraph-checkpoint-mysql"
+version = "1.0.0"
+description = "Library with a MySQL implementation of LangGraph checkpoint saver."
+authors = ["Theodore Ni <dev@ted.bio>"]
 license = "MIT"
 readme = "README.md"
-repository = "https://www.github.com/langchain-ai/langgraph"
+repository = "https://www.github.com/tjni/langgraph-checkpoint-mysql"
 packages = [{ include = "langgraph" }]
 
 [tool.poetry.dependencies]
 python = "^3.9.0,<4.0"
 langgraph-checkpoint = "^1.0.11"
-orjson = ">=3.10.1"
-psycopg = "^3.0.0"
-psycopg-pool = "^3.0.0"
+pymysql =  { version = "^1.1.1", optional = true }
+aiomysql = { version = "^0.2.0", optional = true }
+
+[tool.poetry.extras]
+pymysql = ["pymysql"]
+aiomysql = ["aiomysql"]
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.2"
@@ -24,8 +27,9 @@ pytest-asyncio = "^0.21.1"
 pytest-mock = "^3.11.1"
 pytest-watch = "^4.2.0"
 mypy = "^1.10.0"
-psycopg = {extras = ["binary"], version = ">=3.0.0"}
-langgraph-checkpoint = {path = "../checkpoint", develop = true}
+pymysql = "^1.1.1"
+aiomysql = "^0.2.0"
+types-PyMySQL = "^1.1.0"
 
 [tool.pytest.ini_options]
 # --strict-markers will raise errors on unknown marks.

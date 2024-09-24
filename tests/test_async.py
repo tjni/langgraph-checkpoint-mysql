@@ -1,19 +1,19 @@
 from typing import Any
 
 import pytest
+from conftest import DEFAULT_URI  # type: ignore
 from langchain_core.runnables import RunnableConfig
+
 from langgraph.checkpoint.base import (
     Checkpoint,
     CheckpointMetadata,
     create_checkpoint,
     empty_checkpoint,
 )
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
-from conftest import DEFAULT_URI  # type: ignore
+from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
 
 
-class TestAsyncPostgresSaver:
+class TestAIOMySQLSaver:
     @pytest.fixture(autouse=True)
     async def setup(self) -> None:
         # objects for test setup
@@ -57,11 +57,11 @@ class TestAsyncPostgresSaver:
             "score": None,
         }
         self.metadata_3: CheckpointMetadata = {}
-        async with AsyncPostgresSaver.from_conn_string(DEFAULT_URI) as saver:
+        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
             await saver.setup()
 
     async def test_asearch(self) -> None:
-        async with AsyncPostgresSaver.from_conn_string(DEFAULT_URI) as saver:
+        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
             await saver.aput(self.config_1, self.chkpnt_1, self.metadata_1, {})
             await saver.aput(self.config_2, self.chkpnt_2, self.metadata_2, {})
             await saver.aput(self.config_3, self.chkpnt_3, self.metadata_3, {})

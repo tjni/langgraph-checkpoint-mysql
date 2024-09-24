@@ -1,19 +1,19 @@
 from typing import Any
 
 import pytest
+from conftest import DEFAULT_URI  # type: ignore
 from langchain_core.runnables import RunnableConfig
+
 from langgraph.checkpoint.base import (
     Checkpoint,
     CheckpointMetadata,
     create_checkpoint,
     empty_checkpoint,
 )
-from langgraph.checkpoint.postgres import PostgresSaver
-
-from conftest import DEFAULT_URI  # type: ignore
+from langgraph.checkpoint.mysql import PyMySQLSaver
 
 
-class TestPostgresSaver:
+class TestPyMySQLSaver:
     @pytest.fixture(autouse=True)
     def setup(self) -> None:
         # objects for test setup
@@ -57,11 +57,11 @@ class TestPostgresSaver:
             "score": None,
         }
         self.metadata_3: CheckpointMetadata = {}
-        with PostgresSaver.from_conn_string(DEFAULT_URI) as saver:
+        with PyMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
             saver.setup()
 
     def test_search(self) -> None:
-        with PostgresSaver.from_conn_string(DEFAULT_URI) as saver:
+        with PyMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
             # save checkpoints
             saver.put(self.config_1, self.chkpnt_1, self.metadata_1, {})
             saver.put(self.config_2, self.chkpnt_2, self.metadata_2, {})

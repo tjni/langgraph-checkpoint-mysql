@@ -1,8 +1,8 @@
+import json
 import random
 from typing import Any, List, Optional, Sequence, Tuple, cast
 
 from langchain_core.runnables import RunnableConfig
-from psycopg.types.json import Jsonb
 
 from langgraph.checkpoint.base import (
     WRITES_IDX_MAP,
@@ -26,36 +26,36 @@ MIGRATIONS = [
     v INTEGER PRIMARY KEY
 );""",
     """CREATE TABLE IF NOT EXISTS checkpoints (
-    thread_id TEXT NOT NULL,
-    checkpoint_ns TEXT NOT NULL DEFAULT '',
-    checkpoint_id TEXT NOT NULL,
-    parent_checkpoint_id TEXT,
-    type TEXT,
-    checkpoint JSONB NOT NULL,
-    metadata JSONB NOT NULL DEFAULT '{}',
+    thread_id VARCHAR(150) NOT NULL,
+    checkpoint_ns VARCHAR(150) NOT NULL DEFAULT '',
+    checkpoint_id VARCHAR(150) NOT NULL,
+    parent_checkpoint_id VARCHAR(150),
+    type VARCHAR(150),
+    checkpoint JSON NOT NULL,
+    metadata JSON NOT NULL DEFAULT ('{}'),
     PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
 );""",
     """CREATE TABLE IF NOT EXISTS checkpoint_blobs (
-    thread_id TEXT NOT NULL,
-    checkpoint_ns TEXT NOT NULL DEFAULT '',
-    channel TEXT NOT NULL,
-    version TEXT NOT NULL,
-    type TEXT NOT NULL,
-    blob BYTEA,
+    thread_id VARCHAR(150) NOT NULL,
+    checkpoint_ns VARCHAR(150) NOT NULL DEFAULT '',
+    channel VARCHAR(150) NOT NULL,
+    version VARCHAR(150) NOT NULL,
+    type VARCHAR(150) NOT NULL,
+    `blob` LONGBLOB,
     PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
 );""",
     """CREATE TABLE IF NOT EXISTS checkpoint_writes (
-    thread_id TEXT NOT NULL,
-    checkpoint_ns TEXT NOT NULL DEFAULT '',
-    checkpoint_id TEXT NOT NULL,
-    task_id TEXT NOT NULL,
+    thread_id VARCHAR(150) NOT NULL,
+    checkpoint_ns VARCHAR(150) NOT NULL DEFAULT '',
+    checkpoint_id VARCHAR(150) NOT NULL,
+    task_id VARCHAR(150) NOT NULL,
     idx INTEGER NOT NULL,
-    channel TEXT NOT NULL,
-    type TEXT,
-    blob BYTEA NOT NULL,
+    channel VARCHAR(150) NOT NULL,
+    type VARCHAR(150),
+    `blob` LONGBLOB NOT NULL,
     PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
 );""",
-    "ALTER TABLE checkpoint_blobs ALTER COLUMN blob DROP not null;",
+    "ALTER TABLE checkpoint_blobs MODIFY COLUMN `blob` LONGBLOB;",
 ]
 
 SELECT_SQL = f"""
@@ -67,24 +67,30 @@ select
     parent_checkpoint_id,
     metadata,
     (
-        select array_agg(array[bl.channel::bytea, bl.type::bytea, bl.blob])
-        from jsonb_each_text(checkpoint -> 'channel_versions')
+        select json_arrayagg(json_array(bl.channel, bl.type, bl.blob))
+        from json_table(
+            checkpoint,
+            '$.channel_versions[*]' columns (
+                `key` VARCHAR(255) PATH '$.key',
+                value VARCHAR(255) PATH '$.value'
+            )
+        ) as channel_versions
         inner join checkpoint_blobs bl
             on bl.thread_id = checkpoints.thread_id
             and bl.checkpoint_ns = checkpoints.checkpoint_ns
-            and bl.channel = jsonb_each_text.key
-            and bl.version = jsonb_each_text.value
+            and bl.channel = channel_versions.key
+            and bl.version = channel_versions.value
     ) as channel_values,
     (
         select
-        array_agg(array[cw.task_id::text::bytea, cw.channel::bytea, cw.type::bytea, cw.blob] order by cw.task_id, cw.idx)
+        json_arrayagg(json_array(cw.task_id, cw.channel, cw.type, cw.blob))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns = checkpoints.checkpoint_ns
             and cw.checkpoint_id = checkpoints.checkpoint_id
     ) as pending_writes,
     (
-        select array_agg(array[cw.type::bytea, cw.blob] order by cw.idx)
+        select json_arrayagg(json_array(cw.type, cw.blob))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns = checkpoints.checkpoint_ns
@@ -94,37 +100,34 @@ select
 from checkpoints """
 
 UPSERT_CHECKPOINT_BLOBS_SQL = """
-    INSERT INTO checkpoint_blobs (thread_id, checkpoint_ns, channel, version, type, blob)
+    INSERT IGNORE INTO checkpoint_blobs (thread_id, checkpoint_ns, channel, version, type, `blob`)
     VALUES (%s, %s, %s, %s, %s, %s)
-    ON CONFLICT (thread_id, checkpoint_ns, channel, version) DO NOTHING
 """
 
 UPSERT_CHECKPOINTS_SQL = """
     INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, checkpoint, metadata)
-    VALUES (%s, %s, %s, %s, %s, %s)
-    ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id)
-    DO UPDATE SET
-        checkpoint = EXCLUDED.checkpoint,
-        metadata = EXCLUDED.metadata;
+    VALUES (%s, %s, %s, %s, %s, %s) AS new
+    ON DUPLICATE KEY UPDATE
+        checkpoint = new.checkpoint,
+        metadata = new.metadata;
 """
 
 UPSERT_CHECKPOINT_WRITES_SQL = """
-    INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO UPDATE SET
-        channel = EXCLUDED.channel,
-        type = EXCLUDED.type,
-        blob = EXCLUDED.blob;
+    INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, `blob`)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) AS new
+    ON DUPLICATE KEY UPDATE
+        channel = new.channel,
+        type = new.type,
+        `blob` = new.blob;
 """
 
 INSERT_CHECKPOINT_WRITES_SQL = """
-    INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
+    INSERT IGNORE INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, `blob`)
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO NOTHING
 """
 
 
-class BasePostgresSaver(BaseCheckpointSaver[str]):
+class BaseMySQLSaver(BaseCheckpointSaver[str]):
     SELECT_SQL = SELECT_SQL
     MIGRATIONS = MIGRATIONS
     UPSERT_CHECKPOINT_BLOBS_SQL = UPSERT_CHECKPOINT_BLOBS_SQL
@@ -224,8 +227,8 @@ class BasePostgresSaver(BaseCheckpointSaver[str]):
             for idx, (channel, value) in enumerate(writes)
         ]
 
-    def _load_metadata(self, metadata: dict[str, Any]) -> CheckpointMetadata:
-        return self.jsonplus_serde.loads(self.jsonplus_serde.dumps(metadata))
+    def _load_metadata(self, metadata: str) -> CheckpointMetadata:
+        return self.jsonplus_serde.loads(metadata.encode())
 
     def _dump_metadata(self, metadata: CheckpointMetadata) -> str:
         serialized_metadata = self.jsonplus_serde.dumps(metadata)
@@ -273,8 +276,8 @@ class BasePostgresSaver(BaseCheckpointSaver[str]):
 
         # construct predicate for metadata filter
         if filter:
-            wheres.append("metadata @> %s ")
-            param_values.append(Jsonb(filter))
+            wheres.append("json_contains(metadata, %s) ")
+            param_values.append(json.dumps(filter))
 
         # construct predicate for `before`
         if before is not None:

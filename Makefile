@@ -4,24 +4,24 @@
 # TESTING AND COVERAGE
 ######################
 
-start-postgres:
-	docker compose -f tests/compose-postgres.yml up -V --force-recreate --wait
+start-mysql:
+	docker compose -f tests/compose-mysql.yml up -V --force-recreate --wait
 
-stop-postgres:
-	docker compose -f tests/compose-postgres.yml down
+stop-mysql:
+	docker compose -f tests/compose-mysql.yml down
 
 test:
-	make start-postgres; \
+	make start-mysql; \
 	poetry run pytest; \
 	EXIT_CODE=$$?; \
-	make stop-postgres; \
+	make stop-mysql; \
 	exit $$EXIT_CODE
 
 test_watch:
-	make start-postgres; \
+	make start-mysql; \
 	poetry run ptw .; \
 	EXIT_CODE=$$?; \
-	make stop-postgres; \
+	make stop-mysql; \
 	exit $$EXIT_CODE
 
 ######################

@@ -1,13 +1,13 @@
+import json
 import threading
+import urllib.parse
 from contextlib import contextmanager
-from typing import Any, Iterator, Optional, Sequence, Union
+from typing import Any, Iterator, Optional, Protocol, Sequence, Union
 
+import pymysql
+import pymysql.constants.ER
+import pymysql.cursors
 from langchain_core.runnables import RunnableConfig
-from psycopg import Connection, Cursor, Pipeline
-from psycopg.errors import UndefinedTable
-from psycopg.rows import DictRow, dict_row
-from psycopg.types.json import Jsonb
-from psycopg_pool import ConnectionPool
 
 from langgraph.checkpoint.base import (
     WRITES_IDX_MAP,
@@ -17,84 +17,93 @@ from langgraph.checkpoint.base import (
     CheckpointTuple,
     get_checkpoint_id,
 )
-from langgraph.checkpoint.postgres.base import (
-    BasePostgresSaver,
+from langgraph.checkpoint.mysql.base import (
+    BaseMySQLSaver,
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
-Conn = Union[Connection[DictRow], ConnectionPool[Connection[DictRow]]]
+
+class ConnectionPool(Protocol):
+    """Protocol that a MySQL connection pool should implement."""
+
+    def get_connection(self) -> pymysql.Connection:
+        """Gets a connection from the connection pool."""
+        ...
+
+
+Conn = Union[pymysql.Connection, ConnectionPool]
 
 
 @contextmanager
-def _get_connection(conn: Conn) -> Iterator[Connection[DictRow]]:
-    if isinstance(conn, Connection):
+def _get_connection(conn: Conn) -> Iterator[pymysql.Connection]:
+    if isinstance(conn, pymysql.Connection):
         yield conn
-    elif isinstance(conn, ConnectionPool):
-        with conn.connection() as conn:
+    elif hasattr(conn, "get_connection"):
+        with conn.get_connection() as conn:
             yield conn
     else:
         raise TypeError(f"Invalid connection type: {type(conn)}")
 
 
-class PostgresSaver(BasePostgresSaver):
+class PyMySQLSaver(BaseMySQLSaver):
     lock: threading.Lock
 
     def __init__(
         self,
         conn: Conn,
-        pipe: Optional[Pipeline] = None,
         serde: Optional[SerializerProtocol] = None,
     ) -> None:
         super().__init__(serde=serde)
-        if isinstance(conn, ConnectionPool) and pipe is not None:
-            raise ValueError(
-                "Pipeline should be used only with a single Connection, not ConnectionPool."
-            )
 
         self.conn = conn
-        self.pipe = pipe
         self.lock = threading.Lock()
 
     @classmethod
     @contextmanager
     def from_conn_string(
-        cls, conn_string: str, *, pipeline: bool = False
-    ) -> Iterator["PostgresSaver"]:
-        """Create a new PostgresSaver instance from a connection string.
+        cls,
+        conn_string: str,
+    ) -> Iterator["PyMySQLSaver"]:
+        """Create a new PyMySQLSaver instance from a connection string.
 
         Args:
-            conn_string (str): The Postgres connection info string.
-            pipeline (bool): whether to use Pipeline
+            conn_string (str): The MySQL connection info string.
 
         Returns:
-            PostgresSaver: A new PostgresSaver instance.
+            PyMySQLSaver: A new PyMySQLSaver instance.
         """
-        with Connection.connect(
-            conn_string, autocommit=True, prepare_threshold=0, row_factory=dict_row
+        parsed = urllib.parse.urlparse(conn_string)
+
+        with pymysql.connect(
+            host=parsed.hostname,
+            user=parsed.username,
+            password=parsed.password or "",
+            database=parsed.path[1:],
+            port=parsed.port or 3306,
+            autocommit=True,
         ) as conn:
-            if pipeline:
-                with conn.pipeline() as pipe:
-                    yield PostgresSaver(conn, pipe)
-            else:
-                yield PostgresSaver(conn)
+            yield PyMySQLSaver(conn)
 
     def setup(self) -> None:
         """Set up the checkpoint database asynchronously.
 
-        This method creates the necessary tables in the Postgres database if they don't
+        This method creates the necessary tables in the MySQL database if they don't
         already exist and runs database migrations. It MUST be called directly by the user
         the first time checkpointer is used.
         """
         with self._cursor() as cur:
             try:
-                row = cur.execute(
+                cur.execute(
                     "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
-                ).fetchone()
+                )
+                row = cur.fetchone()
                 if row is None:
                     version = -1
                 else:
                     version = row["v"]
-            except UndefinedTable:
+            except pymysql.ProgrammingError as e:
+                if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
+                    raise
                 version = -1
             for v, migration in zip(
                 range(version + 1, len(self.MIGRATIONS)),
@@ -102,8 +111,6 @@ class PostgresSaver(BasePostgresSaver):
             ):
                 cur.execute(migration)
                 cur.execute(f"INSERT INTO checkpoint_migrations (v) VALUES ({v})")
-        if self.pipe:
-            self.pipe.sync()
 
     def list(
         self,
@@ -115,7 +122,7 @@ class PostgresSaver(BasePostgresSaver):
     ) -> Iterator[CheckpointTuple]:
         """List checkpoints from the database.
 
-        This method retrieves a list of checkpoint tuples from the Postgres database based
+        This method retrieves a list of checkpoint tuples from the MySQL database based
         on the provided config. The checkpoints are ordered by checkpoint ID in descending order (newest first).
 
         Args:
@@ -128,9 +135,9 @@ class PostgresSaver(BasePostgresSaver):
             Iterator[CheckpointTuple]: An iterator of checkpoint tuples.
 
         Examples:
-            >>> from langgraph.checkpoint.postgres import PostgresSaver
-            >>> DB_URI = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-            >>> with PostgresSaver.from_conn_string(DB_URI) as memory:
+            >>> from langgraph.checkpoint.mysql import PyMySQLSaver
+            >>> DB_URI = "mysql://mysql:mysql@localhost:5432/mysql"
+            >>> with PyMySQLSaver.from_conn_string(DB_URI) as memory:
             ... # Run a graph, then list the checkpoints
             >>>     config = {"configurable": {"thread_id": "1"}}
             >>>     checkpoints = list(memory.list(config, limit=2))
@@ -139,7 +146,7 @@ class PostgresSaver(BasePostgresSaver):
 
             >>> config = {"configurable": {"thread_id": "1"}}
             >>> before = {"configurable": {"checkpoint_id": "1ef4f797-8335-6428-8001-8a1503f9b875"}}
-            >>> with PostgresSaver.from_conn_string(DB_URI) as memory:
+            >>> with PyMySQLSaver.from_conn_string(DB_URI) as memory:
             ... # Run a graph, then list the checkpoints
             >>>     checkpoints = list(memory.list(config, before=before))
             >>> print(checkpoints)
@@ -151,7 +158,7 @@ class PostgresSaver(BasePostgresSaver):
             query += f" LIMIT {limit}"
         # if we change this to use .stream() we need to make sure to close the cursor
         with self._cursor() as cur:
-            cur.execute(query, args, binary=True)
+            cur.execute(query, args)
             for value in cur:
                 yield CheckpointTuple(
                     {
@@ -162,7 +169,7 @@ class PostgresSaver(BasePostgresSaver):
                         }
                     },
                     self._load_checkpoint(
-                        value["checkpoint"],
+                        json.loads(value["checkpoint"]),
                         value["channel_values"],
                         value["pending_sends"],
                     ),
@@ -182,7 +189,7 @@ class PostgresSaver(BasePostgresSaver):
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database.
 
-        This method retrieves a checkpoint tuple from the Postgres database based on the
+        This method retrieves a checkpoint tuple from the MySQL database based on the
         provided config. If the config contains a "checkpoint_id" key, the checkpoint with
         the matching thread ID and timestamp is retrieved. Otherwise, the latest checkpoint
         for the given thread ID is retrieved.
@@ -228,7 +235,6 @@ class PostgresSaver(BasePostgresSaver):
             cur.execute(
                 self.SELECT_SQL + where,
                 args,
-                binary=True,
             )
 
             for value in cur:
@@ -241,7 +247,7 @@ class PostgresSaver(BasePostgresSaver):
                         }
                     },
                     self._load_checkpoint(
-                        value["checkpoint"],
+                        json.loads(value["checkpoint"]),
                         value["channel_values"],
                         value["pending_sends"],
                     ),
@@ -267,7 +273,7 @@ class PostgresSaver(BasePostgresSaver):
     ) -> RunnableConfig:
         """Save a checkpoint to the database.
 
-        This method saves a checkpoint to the Postgres database. The checkpoint is associated
+        This method saves a checkpoint to the MySQL database. The checkpoint is associated
         with the provided config and its parent config (if any).
 
         Args:
@@ -281,9 +287,9 @@ class PostgresSaver(BasePostgresSaver):
 
         Examples:
 
-            >>> from langgraph.checkpoint.postgres import PostgresSaver
-            >>> DB_URI = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-            >>> with PostgresSaver.from_conn_string(DB_URI) as memory:
+            >>> from langgraph.checkpoint.mysql import PyMySQLSaver
+            >>> DB_URI = "mysql://mysql:mysql@localhost:5432/mysql"
+            >>> with PyMySQLSaver.from_conn_string(DB_URI) as memory:
             >>>     config = {"configurable": {"thread_id": "1", "checkpoint_ns": ""}}
             >>>     checkpoint = {"ts": "2024-05-04T06:32:42.235444+00:00", "id": "1ef4f797-8335-6428-8001-8a1503f9b875", "data": {"key": "value"}}
             >>>     saved_config = memory.put(config, checkpoint, {"source": "input", "step": 1, "writes": {"key": "value"}}, {})
@@ -306,7 +312,7 @@ class PostgresSaver(BasePostgresSaver):
             }
         }
 
-        with self._cursor(pipeline=True) as cur:
+        with self._cursor() as cur:
             cur.executemany(
                 self.UPSERT_CHECKPOINT_BLOBS_SQL,
                 self._dump_blobs(
@@ -323,7 +329,7 @@ class PostgresSaver(BasePostgresSaver):
                     checkpoint_ns,
                     checkpoint["id"],
                     checkpoint_id,
-                    Jsonb(self._dump_checkpoint(copy)),
+                    json.dumps(self._dump_checkpoint(copy)),
                     self._dump_metadata(metadata),
                 ),
             )
@@ -337,7 +343,7 @@ class PostgresSaver(BasePostgresSaver):
     ) -> None:
         """Store intermediate writes linked to a checkpoint.
 
-        This method saves intermediate writes associated with a checkpoint to the Postgres database.
+        This method saves intermediate writes associated with a checkpoint to the MySQL database.
 
         Args:
             config (RunnableConfig): Configuration of the related checkpoint.
@@ -349,7 +355,7 @@ class PostgresSaver(BasePostgresSaver):
             if all(w[0] in WRITES_IDX_MAP for w in writes)
             else self.INSERT_CHECKPOINT_WRITES_SQL
         )
-        with self._cursor(pipeline=True) as cur:
+        with self._cursor() as cur:
             cur.executemany(
                 query,
                 self._dump_writes(
@@ -362,25 +368,7 @@ class PostgresSaver(BasePostgresSaver):
             )
 
     @contextmanager
-    def _cursor(self, *, pipeline: bool = False) -> Iterator[Cursor[DictRow]]:
+    def _cursor(self) -> Iterator[pymysql.cursors.DictCursor]:
         with _get_connection(self.conn) as conn:
-            if self.pipe:
-                # a connection in pipeline mode can be used concurrently
-                # in multiple threads/coroutines, but only one cursor can be
-                # used at a time
-                try:
-                    with conn.cursor(binary=True, row_factory=dict_row) as cur:
-                        yield cur
-                finally:
-                    if pipeline:
-                        self.pipe.sync()
-            elif pipeline:
-                # a connection not in pipeline mode can only be used by one
-                # thread/coroutine at a time, so we acquire a lock
-                with self.lock, conn.pipeline(), conn.cursor(
-                    binary=True, row_factory=dict_row
-                ) as cur:
-                    yield cur
-            else:
-                with self.lock, conn.cursor(binary=True, row_factory=dict_row) as cur:
-                    yield cur
+            with self.lock, conn.cursor(pymysql.cursors.DictCursor) as cur:
+                yield cur

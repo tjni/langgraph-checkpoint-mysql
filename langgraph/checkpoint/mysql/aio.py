@@ -1,13 +1,14 @@
 import asyncio
+import json
+import urllib.parse
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Iterator, Optional, Sequence, Union
 
+import aiomysql  # type: ignore
+import pymysql
+import pymysql.connections
+import pymysql.constants.ER
 from langchain_core.runnables import RunnableConfig
-from psycopg import AsyncConnection, AsyncCursor, AsyncPipeline
-from psycopg.errors import UndefinedTable
-from psycopg.rows import DictRow, dict_row
-from psycopg.types.json import Jsonb
-from psycopg_pool import AsyncConnectionPool
 
 from langgraph.checkpoint.base import (
     WRITES_IDX_MAP,
@@ -17,42 +18,36 @@ from langgraph.checkpoint.base import (
     CheckpointTuple,
     get_checkpoint_id,
 )
-from langgraph.checkpoint.postgres.base import BasePostgresSaver
+from langgraph.checkpoint.mysql.base import BaseMySQLSaver
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
-Conn = Union[AsyncConnection[DictRow], AsyncConnectionPool[AsyncConnection[DictRow]]]
+Conn = Union[aiomysql.Connection, aiomysql.Pool]
 
 
 @asynccontextmanager
 async def _get_connection(
     conn: Conn,
-) -> AsyncIterator[AsyncConnection[DictRow]]:
-    if isinstance(conn, AsyncConnection):
+) -> AsyncIterator[aiomysql.Connection]:
+    if isinstance(conn, aiomysql.Connection):
         yield conn
-    elif isinstance(conn, AsyncConnectionPool):
-        async with conn.connection() as conn:
-            yield conn
+    elif isinstance(conn, aiomysql.Pool):
+        async with conn.acquire() as _conn:
+            yield _conn
     else:
         raise TypeError(f"Invalid connection type: {type(conn)}")
 
 
-class AsyncPostgresSaver(BasePostgresSaver):
+class AIOMySQLSaver(BaseMySQLSaver):
     lock: asyncio.Lock
 
     def __init__(
         self,
         conn: Conn,
-        pipe: Optional[AsyncPipeline] = None,
         serde: Optional[SerializerProtocol] = None,
     ) -> None:
         super().__init__(serde=serde)
-        if isinstance(conn, AsyncConnectionPool) and pipe is not None:
-            raise ValueError(
-                "Pipeline should be used only with a single AsyncConnection, not AsyncConnectionPool."
-            )
 
         self.conn = conn
-        self.pipe = pipe
         self.lock = asyncio.Lock()
         self.loop = asyncio.get_running_loop()
 
@@ -62,45 +57,52 @@ class AsyncPostgresSaver(BasePostgresSaver):
         cls,
         conn_string: str,
         *,
-        pipeline: bool = False,
         serde: Optional[SerializerProtocol] = None,
-    ) -> AsyncIterator["AsyncPostgresSaver"]:
-        """Create a new PostgresSaver instance from a connection string.
+    ) -> AsyncIterator["AIOMySQLSaver"]:
+        """Create a new AIOMySQLSaver instance from a connection string.
 
         Args:
-            conn_string (str): The Postgres connection info string.
-            pipeline (bool): whether to use AsyncPipeline
+            conn_string (str): The MySQL connection info string.
 
         Returns:
-            AsyncPostgresSaver: A new AsyncPostgresSaver instance.
+            AIOMySQLSaver: A new AIOMySQLSaver instance.
         """
-        async with await AsyncConnection.connect(
-            conn_string, autocommit=True, prepare_threshold=0, row_factory=dict_row
+        parsed = urllib.parse.urlparse(conn_string)
+
+        async with aiomysql.connect(
+            host=parsed.hostname or "localhost",
+            user=parsed.username,
+            password=parsed.password or "",
+            db=parsed.path[1:],
+            port=parsed.port or 3306,
+            autocommit=True,
         ) as conn:
-            if pipeline:
-                async with conn.pipeline() as pipe:
-                    yield AsyncPostgresSaver(conn=conn, pipe=pipe, serde=serde)
-            else:
-                yield AsyncPostgresSaver(conn=conn, serde=serde)
+            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
+            # is merged into aiomysql.
+            await conn.set_charset(pymysql.connections.DEFAULT_CHARSET)
+
+            yield AIOMySQLSaver(conn=conn, serde=serde)
 
     async def setup(self) -> None:
         """Set up the checkpoint database asynchronously.
 
-        This method creates the necessary tables in the Postgres database if they don't
+        This method creates the necessary tables in the MySQL database if they don't
         already exist and runs database migrations. It MUST be called directly by the user
         the first time checkpointer is used.
         """
         async with self._cursor() as cur:
             try:
-                results = await cur.execute(
+                await cur.execute(
                     "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
                 )
-                row = await results.fetchone()
+                row = await cur.fetchone()
                 if row is None:
                     version = -1
                 else:
                     version = row["v"]
-            except UndefinedTable:
+            except pymysql.ProgrammingError as e:
+                if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
+                    raise
                 version = -1
             for v, migration in zip(
                 range(version + 1, len(self.MIGRATIONS)),
@@ -108,8 +110,6 @@ class AsyncPostgresSaver(BasePostgresSaver):
             ):
                 await cur.execute(migration)
                 await cur.execute(f"INSERT INTO checkpoint_migrations (v) VALUES ({v})")
-        if self.pipe:
-            await self.pipe.sync()
 
     async def alist(
         self,
@@ -121,7 +121,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
     ) -> AsyncIterator[CheckpointTuple]:
         """List checkpoints from the database asynchronously.
 
-        This method retrieves a list of checkpoint tuples from the Postgres database based
+        This method retrieves a list of checkpoint tuples from the MySQL database based
         on the provided config. The checkpoints are ordered by checkpoint ID in descending order (newest first).
 
         Args:
@@ -139,7 +139,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
             query += f" LIMIT {limit}"
         # if we change this to use .stream() we need to make sure to close the cursor
         async with self._cursor() as cur:
-            await cur.execute(query, args, binary=True)
+            await cur.execute(query, args)
             async for value in cur:
                 yield CheckpointTuple(
                     {
@@ -151,7 +151,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
                     },
                     await asyncio.to_thread(
                         self._load_checkpoint,
-                        value["checkpoint"],
+                        json.loads(value["checkpoint"]),
                         value["channel_values"],
                         value["pending_sends"],
                     ),
@@ -171,7 +171,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
     async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database asynchronously.
 
-        This method retrieves a checkpoint tuple from the Postgres database based on the
+        This method retrieves a checkpoint tuple from the MySQL database based on the
         provided config. If the config contains a "checkpoint_id" key, the checkpoint with
         the matching thread ID and "checkpoint_id" is retrieved. Otherwise, the latest checkpoint
         for the given thread ID is retrieved.
@@ -196,7 +196,6 @@ class AsyncPostgresSaver(BasePostgresSaver):
             await cur.execute(
                 self.SELECT_SQL + where,
                 args,
-                binary=True,
             )
 
             async for value in cur:
@@ -210,7 +209,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
                     },
                     await asyncio.to_thread(
                         self._load_checkpoint,
-                        value["checkpoint"],
+                        json.loads(value["checkpoint"]),
                         value["channel_values"],
                         value["pending_sends"],
                     ),
@@ -236,7 +235,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
     ) -> RunnableConfig:
         """Save a checkpoint to the database asynchronously.
 
-        This method saves a checkpoint to the Postgres database. The checkpoint is associated
+        This method saves a checkpoint to the MySQL database. The checkpoint is associated
         with the provided config and its parent config (if any).
 
         Args:
@@ -264,7 +263,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
             }
         }
 
-        async with self._cursor(pipeline=True) as cur:
+        async with self._cursor() as cur:
             await cur.executemany(
                 self.UPSERT_CHECKPOINT_BLOBS_SQL,
                 await asyncio.to_thread(
@@ -282,7 +281,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
                     checkpoint_ns,
                     checkpoint["id"],
                     checkpoint_id,
-                    Jsonb(self._dump_checkpoint(copy)),
+                    json.dumps(self._dump_checkpoint(copy)),
                     self._dump_metadata(metadata),
                 ),
             )
@@ -316,36 +315,14 @@ class AsyncPostgresSaver(BasePostgresSaver):
             task_id,
             writes,
         )
-        async with self._cursor(pipeline=True) as cur:
+        async with self._cursor() as cur:
             await cur.executemany(query, params)
 
     @asynccontextmanager
-    async def _cursor(
-        self, *, pipeline: bool = False
-    ) -> AsyncIterator[AsyncCursor[DictRow]]:
+    async def _cursor(self) -> AsyncIterator[aiomysql.DictCursor]:
         async with _get_connection(self.conn) as conn:
-            if self.pipe:
-                # a connection in pipeline mode can be used concurrently
-                # in multiple threads/coroutines, but only one cursor can be
-                # used at a time
-                try:
-                    async with conn.cursor(binary=True, row_factory=dict_row) as cur:
-                        yield cur
-                finally:
-                    if pipeline:
-                        await self.pipe.sync()
-            elif pipeline:
-                # a connection not in pipeline mode can only be used by one
-                # thread/coroutine at a time, so we acquire a lock
-                async with self.lock, conn.pipeline(), conn.cursor(
-                    binary=True, row_factory=dict_row
-                ) as cur:
-                    yield cur
-            else:
-                async with self.lock, conn.cursor(
-                    binary=True, row_factory=dict_row
-                ) as cur:
-                    yield cur
+            async with self.lock, conn.cursor(aiomysql.DictCursor) as cur:
+                yield cur
 
     def list(
         self,
@@ -357,7 +334,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
     ) -> Iterator[CheckpointTuple]:
         """List checkpoints from the database.
 
-        This method retrieves a list of checkpoint tuples from the Postgres database based
+        This method retrieves a list of checkpoint tuples from the MySQL database based
         on the provided config. The checkpoints are ordered by checkpoint ID in descending order (newest first).
 
         Args:
@@ -382,7 +359,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database.
 
-        This method retrieves a checkpoint tuple from the Postgres database based on the
+        This method retrieves a checkpoint tuple from the MySQL database based on the
         provided config. If the config contains a "checkpoint_id" key, the checkpoint with
         the matching thread ID and "checkpoint_id" is retrieved. Otherwise, the latest checkpoint
         for the given thread ID is retrieved.
@@ -398,7 +375,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
             # we don't check in other methods to avoid the overhead
             if asyncio.get_running_loop() is self.loop:
                 raise asyncio.InvalidStateError(
-                    "Synchronous calls to AsyncPostgresSaver are only allowed from a "
+                    "Synchronous calls to AIOMySQLSaver are only allowed from a "
                     "different thread. From the main thread, use the async interface."
                     "For example, use `await checkpointer.aget_tuple(...)` or `await "
                     "graph.ainvoke(...)`."
@@ -418,7 +395,7 @@ class AsyncPostgresSaver(BasePostgresSaver):
     ) -> RunnableConfig:
         """Save a checkpoint to the database.
 
-        This method saves a checkpoint to the Postgres database. The checkpoint is associated
+        This method saves a checkpoint to the MySQL database. The checkpoint is associated
         with the provided config and its parent config (if any).
 
         Args:
