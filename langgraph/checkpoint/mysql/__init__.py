@@ -20,6 +20,11 @@ from langgraph.checkpoint.base import (
 from langgraph.checkpoint.mysql.base import (
     BaseMySQLSaver,
 )
+from langgraph.checkpoint.mysql.utils import (
+    deserialize_channel_values,
+    deserialize_pending_sends,
+    deserialize_pending_writes,
+)
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
 
@@ -170,8 +175,8 @@ class PyMySQLSaver(BaseMySQLSaver):
                     },
                     self._load_checkpoint(
                         json.loads(value["checkpoint"]),
-                        value["channel_values"],
-                        value["pending_sends"],
+                        deserialize_channel_values(value["channel_values"]),
+                        deserialize_pending_sends(value["pending_sends"]),
                     ),
                     self._load_metadata(value["metadata"]),
                     {
@@ -183,7 +188,9 @@ class PyMySQLSaver(BaseMySQLSaver):
                     }
                     if value["parent_checkpoint_id"]
                     else None,
-                    self._load_writes(value["pending_writes"]),
+                    self._load_writes(
+                        deserialize_pending_writes(value["pending_writes"])
+                    ),
                 )
 
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
@@ -248,8 +255,8 @@ class PyMySQLSaver(BaseMySQLSaver):
                     },
                     self._load_checkpoint(
                         json.loads(value["checkpoint"]),
-                        value["channel_values"],
-                        value["pending_sends"],
+                        deserialize_channel_values(value["channel_values"]),
+                        deserialize_pending_sends(value["pending_sends"]),
                     ),
                     self._load_metadata(value["metadata"]),
                     {
@@ -261,7 +268,9 @@ class PyMySQLSaver(BaseMySQLSaver):
                     }
                     if value["parent_checkpoint_id"]
                     else None,
-                    self._load_writes(value["pending_writes"]),
+                    self._load_writes(
+                        deserialize_pending_writes(value["pending_writes"])
+                    ),
                 )
 
     def put(
@@ -302,7 +311,6 @@ class PyMySQLSaver(BaseMySQLSaver):
         checkpoint_id = configurable.pop(
             "checkpoint_id", configurable.pop("thread_ts", None)
         )
-
         copy = checkpoint.copy()
         next_config = {
             "configurable": {

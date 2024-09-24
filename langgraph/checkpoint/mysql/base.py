@@ -68,29 +68,32 @@ select
     metadata,
     (
         select json_arrayagg(json_array(bl.channel, bl.type, bl.blob))
-        from json_table(
-            checkpoint,
-            '$.channel_versions[*]' columns (
-                `key` VARCHAR(255) PATH '$.key',
-                value VARCHAR(255) PATH '$.value'
-            )
+        from
+        (
+            select channel, json_unquote(
+                json_extract(checkpoint, concat('$.channel_versions.', channel))
+            ) as version
+            from json_table(
+                json_keys(checkpoint, '$.channel_versions'),
+                '$[*]' columns (channel VARCHAR(150) PATH '$')
+            ) as channels
         ) as channel_versions
         inner join checkpoint_blobs bl
             on bl.thread_id = checkpoints.thread_id
             and bl.checkpoint_ns = checkpoints.checkpoint_ns
-            and bl.channel = channel_versions.key
-            and bl.version = channel_versions.value
+            and bl.channel = channel_versions.channel
+            and bl.version = channel_versions.version
     ) as channel_values,
     (
         select
-        json_arrayagg(json_array(cw.task_id, cw.channel, cw.type, cw.blob))
+        json_arrayagg(json_array(cw.task_id, cw.channel, cw.type, cw.blob, cw.idx))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns = checkpoints.checkpoint_ns
             and cw.checkpoint_id = checkpoints.checkpoint_id
     ) as pending_writes,
     (
-        select json_arrayagg(json_array(cw.type, cw.blob))
+        select json_arrayagg(json_array(cw.type, cw.blob, cw.idx))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns = checkpoints.checkpoint_ns
@@ -140,13 +143,13 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
     def _load_checkpoint(
         self,
         checkpoint: dict[str, Any],
-        channel_values: list[tuple[bytes, bytes, bytes]],
-        pending_sends: list[tuple[bytes, bytes]],
+        channel_values: list[tuple[str, str, bytes]],
+        pending_sends: list[tuple[str, bytes]],
     ) -> Checkpoint:
         return {
             **checkpoint,
             "pending_sends": [
-                self.serde.loads_typed((c.decode(), b)) for c, b in pending_sends or []
+                self.serde.loads_typed((c, b)) for c, b in pending_sends or []
             ],
             "channel_values": self._load_blobs(channel_values),
         }
@@ -154,15 +157,11 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
     def _dump_checkpoint(self, checkpoint: Checkpoint) -> dict[str, Any]:
         return {**checkpoint, "pending_sends": []}
 
-    def _load_blobs(
-        self, blob_values: list[tuple[bytes, bytes, bytes]]
-    ) -> dict[str, Any]:
+    def _load_blobs(self, blob_values: list[tuple[str, str, bytes]]) -> dict[str, Any]:
         if not blob_values:
             return {}
         return {
-            k.decode(): self.serde.loads_typed((t.decode(), v))
-            for k, t, v in blob_values
-            if t.decode() != "empty"
+            k: self.serde.loads_typed((t, v)) for k, t, v in blob_values if t != "empty"
         }
 
     def _dump_blobs(
@@ -191,14 +190,14 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
         ]
 
     def _load_writes(
-        self, writes: list[tuple[bytes, bytes, bytes, bytes]]
+        self, writes: list[tuple[str, str, str, bytes]]
     ) -> list[tuple[str, str, Any]]:
         return (
             [
                 (
-                    tid.decode(),
-                    channel.decode(),
-                    self.serde.loads_typed((t.decode(), v)),
+                    tid,
+                    channel,
+                    self.serde.loads_typed((t, v)),
                 )
                 for tid, channel, t, v in writes
             ]

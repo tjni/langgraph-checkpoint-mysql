@@ -19,6 +19,11 @@ from langgraph.checkpoint.base import (
     get_checkpoint_id,
 )
 from langgraph.checkpoint.mysql.base import BaseMySQLSaver
+from langgraph.checkpoint.mysql.utils import (
+    deserialize_channel_values,
+    deserialize_pending_sends,
+    deserialize_pending_writes,
+)
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
 Conn = Union[aiomysql.Connection, aiomysql.Pool]
@@ -152,8 +157,8 @@ class AIOMySQLSaver(BaseMySQLSaver):
                     await asyncio.to_thread(
                         self._load_checkpoint,
                         json.loads(value["checkpoint"]),
-                        value["channel_values"],
-                        value["pending_sends"],
+                        deserialize_channel_values(value["channel_values"]),
+                        deserialize_pending_sends(value["pending_sends"]),
                     ),
                     self._load_metadata(value["metadata"]),
                     {
@@ -165,7 +170,10 @@ class AIOMySQLSaver(BaseMySQLSaver):
                     }
                     if value["parent_checkpoint_id"]
                     else None,
-                    await asyncio.to_thread(self._load_writes, value["pending_writes"]),
+                    await asyncio.to_thread(
+                        self._load_writes,
+                        deserialize_pending_writes(value["pending_writes"]),
+                    ),
                 )
 
     async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
@@ -210,8 +218,8 @@ class AIOMySQLSaver(BaseMySQLSaver):
                     await asyncio.to_thread(
                         self._load_checkpoint,
                         json.loads(value["checkpoint"]),
-                        value["channel_values"],
-                        value["pending_sends"],
+                        deserialize_channel_values(value["channel_values"]),
+                        deserialize_pending_sends(value["pending_sends"]),
                     ),
                     self._load_metadata(value["metadata"]),
                     {
@@ -223,7 +231,10 @@ class AIOMySQLSaver(BaseMySQLSaver):
                     }
                     if value["parent_checkpoint_id"]
                     else None,
-                    await asyncio.to_thread(self._load_writes, value["pending_writes"]),
+                    await asyncio.to_thread(
+                        self._load_writes,
+                        deserialize_pending_writes(value["pending_writes"]),
+                    ),
                 )
 
     async def aput(

@@ -5,12 +5,14 @@ from conftest import DEFAULT_URI  # type: ignore
 from langchain_core.runnables import RunnableConfig
 
 from langgraph.checkpoint.base import (
+    ChannelVersions,
     Checkpoint,
     CheckpointMetadata,
     create_checkpoint,
     empty_checkpoint,
 )
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
+from langgraph.checkpoint.serde.types import TASKS
 
 
 class TestAIOMySQLSaver:
@@ -101,3 +103,51 @@ class TestAIOMySQLSaver:
             } == {"", "inner"}
 
             # TODO: test before and limit params
+
+    async def test_write_and_read_pending_writes_and_sends(self) -> None:
+        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
+            config: RunnableConfig = {
+                "configurable": {
+                    "thread_id": "thread-1",
+                    "checkpoint_id": "1",
+                    "checkpoint_ns": "",
+                }
+            }
+            chkpnt = create_checkpoint(self.chkpnt_1, {}, 1, id="1")
+
+            await saver.aput(config, chkpnt, {}, {})
+            await saver.aput_writes(config, [("w1", "w1v"), ("w2", "w2v")], "world")
+            await saver.aput_writes(config, [(TASKS, "w3v")], "hello")
+
+            result = [c async for c in saver.alist({})][0]
+
+            assert result.pending_writes == [
+                ("hello", TASKS, "w3v"),
+                ("world", "w1", "w1v"),
+                ("world", "w2", "w2v"),
+            ]
+
+            assert result.checkpoint["pending_sends"] == ["w3v"]
+
+    async def test_write_and_read_channel_values(self) -> None:
+        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
+            config: RunnableConfig = {
+                "configurable": {
+                    "thread_id": "thread-4",
+                    "checkpoint_id": "4",
+                    "checkpoint_ns": "",
+                }
+            }
+            chkpnt = empty_checkpoint()
+            chkpnt["id"] = "4"
+            chkpnt["channel_values"] = {
+                "channel1": "channel1v",
+            }
+
+            newversions: ChannelVersions = {"channel1": 1}
+            chkpnt["channel_versions"] = newversions
+
+            await saver.aput(config, chkpnt, {}, newversions)
+
+            result = [c async for c in saver.alist({})][0]
+            assert result.checkpoint["channel_values"] == {"channel1": "channel1v"}

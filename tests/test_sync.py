@@ -5,12 +5,14 @@ from conftest import DEFAULT_URI  # type: ignore
 from langchain_core.runnables import RunnableConfig
 
 from langgraph.checkpoint.base import (
+    ChannelVersions,
     Checkpoint,
     CheckpointMetadata,
     create_checkpoint,
     empty_checkpoint,
 )
 from langgraph.checkpoint.mysql import PyMySQLSaver
+from langgraph.checkpoint.serde.types import TASKS
 
 
 class TestPyMySQLSaver:
@@ -101,3 +103,51 @@ class TestPyMySQLSaver:
             } == {"", "inner"}
 
             # TODO: test before and limit params
+
+    def test_write_and_read_pending_writes_and_sends(self) -> None:
+        with PyMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
+            config: RunnableConfig = {
+                "configurable": {
+                    "thread_id": "thread-1",
+                    "checkpoint_id": "1",
+                    "checkpoint_ns": "",
+                }
+            }
+            chkpnt = create_checkpoint(self.chkpnt_1, {}, 1, id="1")
+
+            saver.put(config, chkpnt, {}, {})
+            saver.put_writes(config, [("w1", "w1v"), ("w2", "w2v")], "world")
+            saver.put_writes(config, [(TASKS, "w3v")], "hello")
+
+            result = next(saver.list({}))
+
+            assert result.pending_writes == [
+                ("hello", TASKS, "w3v"),
+                ("world", "w1", "w1v"),
+                ("world", "w2", "w2v"),
+            ]
+
+            assert result.checkpoint["pending_sends"] == ["w3v"]
+
+    def test_write_and_read_channel_values(self) -> None:
+        with PyMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
+            config: RunnableConfig = {
+                "configurable": {
+                    "thread_id": "thread-4",
+                    "checkpoint_id": "4",
+                    "checkpoint_ns": "",
+                }
+            }
+            chkpnt = empty_checkpoint()
+            chkpnt["id"] = "4"
+            chkpnt["channel_values"] = {
+                "channel1": "channel1v",
+            }
+
+            newversions: ChannelVersions = {"channel1": 1}
+            chkpnt["channel_versions"] = newversions
+
+            saver.put(config, chkpnt, {}, newversions)
+
+            result = next(saver.list({}))
+            assert result.checkpoint["channel_values"] == {"channel1": "channel1v"}

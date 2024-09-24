@@ -5,6 +5,9 @@ Implementation of LangGraph CheckpointSaver that uses MySQL.
 > [!TIP]
 > The code in this repository tries to mimic the code in [langgraph-checkpoint-postgres](https://github.com/langchain-ai/langgraph/tree/main/libs/checkpoint-postgres) as much as possible to enable keeping in sync with the official checkpointer implementation.
 
+> [!NOTE]
+> In order to keep the queries close to the Postgres queries, we use features from recent versions of MySQL 8. I'm not sure what the exact minimum version is.
+
 ## Dependencies
 
 To use synchronous `PyMySQLSaver`, install `langgraph-checkpoint-mysql[pymysql]`. To use asynchronous `AIOMySQLSaver`, install `langgraph-checkpoint-mysql[aiomysql]`.
