@@ -11,7 +11,7 @@ from langgraph.checkpoint.base import (
     create_checkpoint,
     empty_checkpoint,
 )
-from langgraph.checkpoint.mysql import PyMySQLSaver
+from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
 
 

@@ -23,7 +23,7 @@ There is currently no support for other drivers.
 > When manually creating MySQL connections and passing them to `PyMySQLSaver` or `AIOMySQLSaver`, make sure to include `autocommit=True`.
 
 ```python
-from langgraph.checkpoint.mysql import PyMySQLSaver
+from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver
 
 write_config = {"configurable": {"thread_id": "1", "checkpoint_ns": ""}}
 read_config = {"configurable": {"thread_id": "1"}}

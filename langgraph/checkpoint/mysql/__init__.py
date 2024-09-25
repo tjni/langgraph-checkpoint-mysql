@@ -1,12 +1,20 @@
 import json
 import threading
-import urllib.parse
 from contextlib import contextmanager
-from typing import Any, Iterator, Optional, Protocol, Sequence, Union
+from typing import (
+    Any,
+    ContextManager,
+    Generic,
+    Iterator,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    TypeVar,
+    Union,
+    cast,
+)
 
-import pymysql
-import pymysql.constants.ER
-import pymysql.cursors
 from langchain_core.runnables import RunnableConfig
 
 from langgraph.checkpoint.base import (
@@ -28,34 +36,58 @@ from langgraph.checkpoint.mysql.utils import (
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
 
-class ConnectionPool(Protocol):
+class DictCursor(Protocol):
+    """
+    Protocol that a cursor should implement.
+
+    Modeled after DBAPICursor from Typeshed.
+    """
+
+    def execute(
+        self,
+        operation: str,
+        parameters: Union[Sequence[Any], Mapping[str, Any]] = ...,
+        /,
+    ) -> object: ...
+    def executemany(
+        self, operation: str, seq_of_parameters: Sequence[Sequence[Any]], /
+    ) -> object: ...
+    def fetchone(self) -> Optional[dict[str, Any]]: ...
+    def fetchall(self) -> Sequence[dict[str, Any]]: ...
+
+
+C = TypeVar("C", bound=ContextManager, covariant=True)  # connecion type
+R = TypeVar("R", bound=ContextManager, covariant=True)  # cursor type
+
+
+class ConnectionPool(Protocol, Generic[C]):
     """Protocol that a MySQL connection pool should implement."""
 
-    def get_connection(self) -> pymysql.Connection:
+    def get_connection(self) -> C:
         """Gets a connection from the connection pool."""
         ...
 
 
-Conn = Union[pymysql.Connection, ConnectionPool]
+Conn = Union[C, ConnectionPool[C]]
 
 
 @contextmanager
-def _get_connection(conn: Conn) -> Iterator[pymysql.Connection]:
-    if isinstance(conn, pymysql.Connection):
-        yield conn
+def _get_connection(conn: Conn[C]) -> Iterator[C]:
+    if hasattr(conn, "cursor"):
+        yield cast(C, conn)
     elif hasattr(conn, "get_connection"):
-        with conn.get_connection() as conn:
-            yield conn
+        with cast(ConnectionPool[C], conn).get_connection() as _conn:
+            yield _conn
     else:
         raise TypeError(f"Invalid connection type: {type(conn)}")
 
 
-class PyMySQLSaver(BaseMySQLSaver):
+class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[C, R]):
     lock: threading.Lock
 
     def __init__(
         self,
-        conn: Conn,
+        conn: Conn[C],
         serde: Optional[SerializerProtocol] = None,
     ) -> None:
         super().__init__(serde=serde)
@@ -63,31 +95,13 @@ class PyMySQLSaver(BaseMySQLSaver):
         self.conn = conn
         self.lock = threading.Lock()
 
-    @classmethod
+    @staticmethod
+    def _is_no_such_table_error(e: Exception) -> bool:
+        raise NotImplementedError
+
     @contextmanager
-    def from_conn_string(
-        cls,
-        conn_string: str,
-    ) -> Iterator["PyMySQLSaver"]:
-        """Create a new PyMySQLSaver instance from a connection string.
-
-        Args:
-            conn_string (str): The MySQL connection info string.
-
-        Returns:
-            PyMySQLSaver: A new PyMySQLSaver instance.
-        """
-        parsed = urllib.parse.urlparse(conn_string)
-
-        with pymysql.connect(
-            host=parsed.hostname,
-            user=parsed.username,
-            password=parsed.password or "",
-            database=parsed.path[1:],
-            port=parsed.port or 3306,
-            autocommit=True,
-        ) as conn:
-            yield PyMySQLSaver(conn)
+    def _cursor(self) -> Iterator[R]:
+        raise NotImplementedError
 
     def setup(self) -> None:
         """Set up the checkpoint database asynchronously.
@@ -96,7 +110,8 @@ class PyMySQLSaver(BaseMySQLSaver):
         already exist and runs database migrations. It MUST be called directly by the user
         the first time checkpointer is used.
         """
-        with self._cursor() as cur:
+        with self._cursor() as cur_:
+            cur = cast(DictCursor, cur_)
             try:
                 cur.execute(
                     "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
@@ -106,8 +121,8 @@ class PyMySQLSaver(BaseMySQLSaver):
                     version = -1
                 else:
                     version = row["v"]
-            except pymysql.ProgrammingError as e:
-                if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
+            except Exception as e:
+                if not self._is_no_such_table_error(e):
                     raise
                 version = -1
             for v, migration in zip(
@@ -162,9 +177,11 @@ class PyMySQLSaver(BaseMySQLSaver):
         if limit:
             query += f" LIMIT {limit}"
         # if we change this to use .stream() we need to make sure to close the cursor
-        with self._cursor() as cur:
+        with self._cursor() as cur_:
+            cur = cast(DictCursor, cur_)
             cur.execute(query, args)
-            for value in cur:
+            values = cur.fetchall()
+            for value in values:
                 yield CheckpointTuple(
                     {
                         "configurable": {
@@ -238,13 +255,14 @@ class PyMySQLSaver(BaseMySQLSaver):
             args = (thread_id, checkpoint_ns)
             where = "WHERE thread_id = %s AND checkpoint_ns = %s ORDER BY checkpoint_id DESC LIMIT 1"
 
-        with self._cursor() as cur:
+        with self._cursor() as cur_:
+            cur = cast(DictCursor, cur_)
             cur.execute(
                 self.SELECT_SQL + where,
                 args,
             )
-
-            for value in cur:
+            values = cur.fetchall()
+            for value in values:
                 return CheckpointTuple(
                     {
                         "configurable": {
@@ -320,7 +338,8 @@ class PyMySQLSaver(BaseMySQLSaver):
             }
         }
 
-        with self._cursor() as cur:
+        with self._cursor() as cur_:
+            cur = cast(DictCursor, cur_)
             cur.executemany(
                 self.UPSERT_CHECKPOINT_BLOBS_SQL,
                 self._dump_blobs(
@@ -363,7 +382,8 @@ class PyMySQLSaver(BaseMySQLSaver):
             if all(w[0] in WRITES_IDX_MAP for w in writes)
             else self.INSERT_CHECKPOINT_WRITES_SQL
         )
-        with self._cursor() as cur:
+        with self._cursor() as cur_:
+            cur = cast(DictCursor, cur_)
             cur.executemany(
                 query,
                 self._dump_writes(
@@ -374,9 +394,3 @@ class PyMySQLSaver(BaseMySQLSaver):
                     writes,
                 ),
             )
-
-    @contextmanager
-    def _cursor(self) -> Iterator[pymysql.cursors.DictCursor]:
-        with _get_connection(self.conn) as conn:
-            with self.lock, conn.cursor(pymysql.cursors.DictCursor) as cur:
-                yield cur
