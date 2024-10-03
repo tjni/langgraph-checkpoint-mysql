@@ -104,6 +104,16 @@ class TestAIOMySQLSaver:
 
             # TODO: test before and limit params
 
+    async def test_null_chars(self) -> None:
+        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
+            config = await saver.aput(
+                self.config_1, self.chkpnt_1, {"my_key": "\x00abc"}, {}
+            )
+            assert (await saver.aget_tuple(config)).metadata["my_key"] == "abc"
+            assert [c async for c in saver.alist(None, filter={"my_key": "abc"})][
+                0
+            ].metadata["my_key"] == "abc"
+
     async def test_write_and_read_pending_writes_and_sends(self) -> None:
         async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
             config: RunnableConfig = {
