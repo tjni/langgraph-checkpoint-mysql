@@ -104,6 +104,15 @@ class TestPyMySQLSaver:
 
             # TODO: test before and limit params
 
+    def test_null_chars(self) -> None:
+        with PyMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
+            config = saver.put(self.config_1, self.chkpnt_1, {"my_key": "\x00abc"}, {})
+            assert saver.get_tuple(config).metadata["my_key"] == "abc"
+            assert (
+                list(saver.list(None, filter={"my_key": "abc"}))[0].metadata["my_key"]
+                == "abc"
+            )
+
     def test_write_and_read_pending_writes_and_sends(self) -> None:
         with PyMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
             config: RunnableConfig = {
