@@ -361,7 +361,7 @@ class AIOMySQLSaver(BaseMySQLSaver):
         while True:
             try:
                 yield asyncio.run_coroutine_threadsafe(
-                    anext(aiter_),
+                    anext(aiter_),  # noqa: F821
                     self.loop,
                 ).result()
             except StopAsyncIteration:

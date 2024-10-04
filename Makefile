@@ -5,21 +5,34 @@
 ######################
 
 start-mysql:
-	docker compose -f tests/compose-mysql.yml up -V --force-recreate --wait
+	MYSQL_VERSION=${MYSQL_VERSION:-16} docker compose -f tests/compose-mysql.yml up -V --force-recreate --wait
 
 stop-mysql:
 	docker compose -f tests/compose-mysql.yml down
 
-test:
-	make start-mysql; \
-	poetry run pytest; \
-	EXIT_CODE=$$?; \
+MYSQL_VERSIONS ?= 8
+test_mysql_version:
+	@echo "Testing MySQL $(MYSQL_VERSION)"
+	@MYSQL_VERSION=$(MYSQL_VERSION) make start-mysql
+	@poetry run pytest $(TEST)
+	@EXIT_CODE=$$?; \
 	make stop-mysql; \
+	echo "Finished testing MySQL $(MYSQL_VERSION); Exit code: $$EXIT_CODE"; \
 	exit $$EXIT_CODE
 
+test:
+	@for version in $(MYSQL_VERSIONS); do \
+		if ! make test_mysql_version MYSQL_VERSION=$$version; then \
+			echo "Test failed for MySQL $$version"; \
+			exit 1; \
+		fi; \
+	done
+	@echo "All MySQL versions tested successfully"
+
+TEST ?= .
 test_watch:
-	make start-mysql; \
-	poetry run ptw .; \
+	POSTGRES_VERSION=${MYSQL_VERSION:-8} make start-mysql; \
+	poetry run ptw $(TEST); \
 	EXIT_CODE=$$?; \
 	make stop-mysql; \
 	exit $$EXIT_CODE
