@@ -1,32 +1,29 @@
 import urllib.parse
-from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Iterator
 
 import pymysql
 import pymysql.constants.ER
 from pymysql.cursors import DictCursor
 from typing_extensions import Self, override
 
-from langgraph.checkpoint.mysql import BaseSyncMySQLSaver, _get_connection
-from langgraph.checkpoint.mysql import Conn as BaseConn
-
-Conn = BaseConn[pymysql.Connection]
+from langgraph.store.mysql.base import BaseSyncMySQLStore
 
 
-class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
+class PyMySQLStore(BaseSyncMySQLStore[pymysql.Connection, DictCursor]):
     @classmethod
     @contextmanager
     def from_conn_string(
         cls,
         conn_string: str,
     ) -> Iterator[Self]:
-        """Create a new PyMySQLSaver instance from a connection string.
+        """Create a new PyMySQLStore instance from a connection string.
 
         Args:
             conn_string (str): The MySQL connection info string.
 
         Returns:
-            PyMySQLSaver: A new PyMySQLSaver instance.
+            PyMySQLStore: A new PyMySQLStore instance.
         """
         parsed = urllib.parse.urlparse(conn_string)
 
@@ -49,11 +46,5 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
         )
 
     @override
-    @contextmanager
-    def _cursor(self) -> Iterator[DictCursor]:
-        with _get_connection(self.conn) as conn:
-            with self.lock, conn.cursor(DictCursor) as cur:
-                yield cur
-
-
-__all__ = ["PyMySQLSaver", "Conn"]
+    def _cursor(self) -> DictCursor:
+        return self.conn.cursor(DictCursor)

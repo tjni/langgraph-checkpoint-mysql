@@ -1,6 +1,6 @@
 services:
   mysql-test:
-    image: mysql:8
+    image: mysql:${MYSQL_VERSION:-8}
     ports:
       - "5441:3306"
     environment:

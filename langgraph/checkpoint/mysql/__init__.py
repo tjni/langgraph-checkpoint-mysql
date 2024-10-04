@@ -25,9 +25,7 @@ from langgraph.checkpoint.base import (
     CheckpointTuple,
     get_checkpoint_id,
 )
-from langgraph.checkpoint.mysql.base import (
-    BaseMySQLSaver,
-)
+from langgraph.checkpoint.mysql.base import BaseMySQLSaver
 from langgraph.checkpoint.mysql.utils import (
     deserialize_channel_values,
     deserialize_pending_sends,
@@ -56,7 +54,7 @@ class DictCursor(Protocol):
     def fetchall(self) -> Sequence[dict[str, Any]]: ...
 
 
-C = TypeVar("C", bound=ContextManager, covariant=True)  # connecion type
+C = TypeVar("C", bound=ContextManager, covariant=True)  # connection type
 R = TypeVar("R", bound=ContextManager, covariant=True)  # cursor type
 
 
@@ -196,15 +194,17 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[C, R]):
                         deserialize_pending_sends(value["pending_sends"]),
                     ),
                     self._load_metadata(value["metadata"]),
-                    {
-                        "configurable": {
-                            "thread_id": value["thread_id"],
-                            "checkpoint_ns": value["checkpoint_ns"],
-                            "checkpoint_id": value["parent_checkpoint_id"],
+                    (
+                        {
+                            "configurable": {
+                                "thread_id": value["thread_id"],
+                                "checkpoint_ns": value["checkpoint_ns"],
+                                "checkpoint_id": value["parent_checkpoint_id"],
+                            }
                         }
-                    }
-                    if value["parent_checkpoint_id"]
-                    else None,
+                        if value["parent_checkpoint_id"]
+                        else None
+                    ),
                     self._load_writes(
                         deserialize_pending_writes(value["pending_writes"])
                     ),
@@ -277,15 +277,17 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[C, R]):
                         deserialize_pending_sends(value["pending_sends"]),
                     ),
                     self._load_metadata(value["metadata"]),
-                    {
-                        "configurable": {
-                            "thread_id": thread_id,
-                            "checkpoint_ns": checkpoint_ns,
-                            "checkpoint_id": value["parent_checkpoint_id"],
+                    (
+                        {
+                            "configurable": {
+                                "thread_id": thread_id,
+                                "checkpoint_ns": checkpoint_ns,
+                                "checkpoint_id": value["parent_checkpoint_id"],
+                            }
                         }
-                    }
-                    if value["parent_checkpoint_id"]
-                    else None,
+                        if value["parent_checkpoint_id"]
+                        else None
+                    ),
                     self._load_writes(
                         deserialize_pending_writes(value["pending_writes"])
                     ),

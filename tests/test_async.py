@@ -109,7 +109,7 @@ class TestAIOMySQLSaver:
             config = await saver.aput(
                 self.config_1, self.chkpnt_1, {"my_key": "\x00abc"}, {}
             )
-            assert (await saver.aget_tuple(config)).metadata["my_key"] == "abc"
+            assert (await saver.aget_tuple(config)).metadata["my_key"] == "abc"  # type: ignore
             assert [c async for c in saver.alist(None, filter={"my_key": "abc"})][
                 0
             ].metadata["my_key"] == "abc"
