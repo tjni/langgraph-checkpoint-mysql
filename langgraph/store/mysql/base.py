@@ -79,20 +79,10 @@ M = TypeVar("M", bound=ContextManager, covariant=True)  # connection type
 R = TypeVar("R", bound=ContextManager, covariant=True)  # cursor type
 
 
-class BaseMySQLStore(BaseStore, Generic[C]):
+class BaseMySQLStore(Generic[C]):
     MIGRATIONS = MIGRATIONS
     conn: C
-    __slots__ = ("_deserializer",)
-
-    def __init__(
-        self,
-        *,
-        deserializer: Optional[
-            Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]
-        ] = None,
-    ) -> None:
-        super().__init__()
-        self._deserializer = deserializer
+    _deserializer: Optional[Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]]
 
     def _get_batch_GET_ops_queries(
         self,
@@ -190,7 +180,9 @@ class BaseMySQLStore(BaseStore, Generic[C]):
                         params.extend([key, json.dumps(value)])
                 query += " AND " + " AND ".join(filter_conditions)
 
-            query += " LIMIT %s OFFSET %s"
+            # Note: we will need to not do this if sim/keyword search
+            # is used
+            query += " ORDER BY updated_at DESC LIMIT %s OFFSET %s"
             params.extend([op.limit, op.offset])
 
             queries.append((query, params))
@@ -246,7 +238,9 @@ class BaseMySQLStore(BaseStore, Generic[C]):
         return queries
 
 
-class BaseSyncMySQLStore(BaseMySQLStore[M], Generic[M, R]):
+class BaseSyncMySQLStore(BaseStore, BaseMySQLStore[M], Generic[M, R]):
+    __slots__ = ("_deserializer",)
+
     def __init__(
         self,
         conn: M,
@@ -255,7 +249,8 @@ class BaseSyncMySQLStore(BaseMySQLStore[M], Generic[M, R]):
             Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]
         ] = None,
     ) -> None:
-        super().__init__(deserializer=deserializer)
+        super().__init__()
+        self._deserializer = deserializer
         self.conn = conn
 
     @staticmethod
