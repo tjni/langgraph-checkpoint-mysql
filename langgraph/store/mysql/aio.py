@@ -19,6 +19,7 @@ import pymysql
 import pymysql.constants.ER
 
 from langgraph.store.base import GetOp, ListNamespacesOp, Op, PutOp, Result, SearchOp
+from langgraph.store.base.batch import AsyncBatchedBaseStore
 from langgraph.store.mysql.base import (
     BaseMySQLStore,
     Row,
@@ -30,7 +31,9 @@ from langgraph.store.mysql.base import (
 logger = logging.getLogger(__name__)
 
 
-class AIOMySQLStore(BaseMySQLStore[aiomysql.Connection]):
+class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[aiomysql.Connection]):
+    __slots__ = ("_deserializer",)
+
     def __init__(
         self,
         conn: aiomysql.Connection,
@@ -39,7 +42,8 @@ class AIOMySQLStore(BaseMySQLStore[aiomysql.Connection]):
             Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]
         ] = None,
     ) -> None:
-        super().__init__(deserializer=deserializer)
+        super().__init__()
+        self._deserializer = deserializer
         self.conn = conn
         self.conn = conn
         self.loop = asyncio.get_running_loop()
