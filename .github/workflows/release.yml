@@ -103,6 +103,7 @@ jobs:
           echo prev-tag="$PREV_TAG" >> $GITHUB_OUTPUT
       - name: Generate release body
         id: generate-release-body
+        working-directory: langgraph-checkpoint-mysql
         env:
           PKG_NAME: ${{ needs.build.outputs.pkg-name }}
           TAG: ${{ needs.build.outputs.tag }}
