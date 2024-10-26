@@ -45,7 +45,6 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[aiomysql.Connection]):
         super().__init__()
         self._deserializer = deserializer
         self.conn = conn
-        self.conn = conn
         self.loop = asyncio.get_running_loop()
 
     async def abatch(self, ops: Iterable[Op]) -> list[Result]:
