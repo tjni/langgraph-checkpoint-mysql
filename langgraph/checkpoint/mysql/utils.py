@@ -37,6 +37,7 @@ def deserialize_pending_writes(value: str) -> list[tuple[str, str, str, bytes]]:
 
 
 class MySQLPendingSend(NamedTuple):
+    task_id: str
     type_: str
     blob: MySQLBase64Blob
     idx: int
@@ -50,7 +51,7 @@ def deserialize_pending_sends(value: str) -> list[tuple[str, bytes]]:
 
     return [
         (db.type_, decode_base64_blob(db.blob))
-        for db in sorted(values, key=lambda db: db.idx)
+        for db in sorted(values, key=lambda db: (db.task_id, db.idx))
     ]
 
 

@@ -93,7 +93,7 @@ select
             and cw.checkpoint_id = checkpoints.checkpoint_id
     ) as pending_writes,
     (
-        select json_arrayagg(json_array(cw.type, cw.blob, cw.idx))
+        select json_arrayagg(json_array(cw.task_id, cw.type, cw.blob, cw.idx))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns = checkpoints.checkpoint_ns
