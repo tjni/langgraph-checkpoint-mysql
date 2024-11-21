@@ -71,7 +71,7 @@ select
         from
         (
             select channel, json_unquote(
-                json_extract(checkpoint, concat('$.channel_versions.', channel))
+                json_extract(checkpoint, concat('$.channel_versions.', '"', channel, '"'))
             ) as version
             from json_table(
                 json_keys(checkpoint, '$.channel_versions'),
