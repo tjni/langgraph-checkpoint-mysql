@@ -157,11 +157,15 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
     def _dump_checkpoint(self, checkpoint: Checkpoint) -> dict[str, Any]:
         return {**checkpoint, "pending_sends": []}
 
-    def _load_blobs(self, blob_values: list[tuple[str, str, Optional[bytes]]]) -> dict[str, Any]:
+    def _load_blobs(
+        self, blob_values: list[tuple[str, str, Optional[bytes]]]
+    ) -> dict[str, Any]:
         if not blob_values:
             return {}
         return {
-            k: self.serde.loads_typed((t, v)) for k, t, v in blob_values if t != "empty" and v
+            k: self.serde.loads_typed((t, v))
+            for k, t, v in blob_values
+            if t != "empty" and v
         }
 
     def _dump_blobs(

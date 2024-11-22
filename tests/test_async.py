@@ -139,7 +139,10 @@ class TestAIOMySQLSaver:
 
             assert result.checkpoint["pending_sends"] == ["w3v"]
 
-    async def test_write_and_read_channel_values(self) -> None:
+    @pytest.mark.parametrize("channel_values", [{"channel1": "channel1v"}, {}])
+    async def test_write_and_read_channel_values(
+        self, channel_values: dict[str, Any]
+    ) -> None:
         async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
             config: RunnableConfig = {
                 "configurable": {
@@ -150,9 +153,7 @@ class TestAIOMySQLSaver:
             }
             chkpnt = empty_checkpoint()
             chkpnt["id"] = "4"
-            chkpnt["channel_values"] = {
-                "channel1": "channel1v",
-            }
+            chkpnt["channel_values"] = channel_values
 
             newversions: ChannelVersions = {"channel1": 1}
             chkpnt["channel_versions"] = newversions
@@ -160,4 +161,33 @@ class TestAIOMySQLSaver:
             await saver.aput(config, chkpnt, {}, newversions)
 
             result = [c async for c in saver.alist({})][0]
-            assert result.checkpoint["channel_values"] == {"channel1": "channel1v"}
+            assert result.checkpoint["channel_values"] == channel_values
+
+    async def test_write_and_read_pending_writes(self) -> None:
+        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
+            config: RunnableConfig = {
+                "configurable": {
+                    "thread_id": "thread-5",
+                    "checkpoint_id": "5",
+                    "checkpoint_ns": "",
+                }
+            }
+            chkpnt = empty_checkpoint()
+            chkpnt["id"] = "5"
+            task_id = "task1"
+            writes = [
+                ("channel1", "somevalue"),
+                ("channel2", [1, 2, 3]),
+                ("channel3", None),
+            ]
+
+            await saver.aput(config, chkpnt, {}, {})
+            await saver.aput_writes(config, writes, task_id)
+
+            result = [c async for c in saver.alist({})][0]
+
+            assert result.pending_writes == [
+                (task_id, "channel1", "somevalue"),
+                (task_id, "channel2", [1, 2, 3]),
+                (task_id, "channel3", None),
+            ]
