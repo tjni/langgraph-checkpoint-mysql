@@ -1,6 +1,6 @@
 import base64
 import json
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 # When MySQL returns a blob in a JSON array, it is base64 encoded and a prefix
 # of "base64:type251:" attached to it.
@@ -8,10 +8,9 @@ MySQLBase64Blob = str
 
 
 def decode_base64_blob(base64_blob: MySQLBase64Blob) -> bytes:
-    if not base64_blob:
-        return None
     _, data = base64_blob.rsplit(":", 1)
     return base64.b64decode(data)
+
 
 class MySQLPendingWrite(NamedTuple):
     """
@@ -59,13 +58,16 @@ def deserialize_pending_sends(value: str) -> list[tuple[str, bytes]]:
 class MySQLChannelValue(NamedTuple):
     channel: str
     type_: str
-    blob: MySQLBase64Blob
+    blob: Optional[MySQLBase64Blob]
 
 
-def deserialize_channel_values(value: str) -> list[tuple[str, str, bytes]]:
+def deserialize_channel_values(value: str) -> list[tuple[str, str, Optional[bytes]]]:
     if not value:
         return []
 
     values = (MySQLChannelValue(*channel_value) for channel_value in json.loads(value))
 
-    return [(db.channel, db.type_, decode_base64_blob(db.blob)) for db in values]
+    return [
+        (db.channel, db.type_, decode_base64_blob(db.blob) if db.blob else None)
+        for db in values
+    ]
