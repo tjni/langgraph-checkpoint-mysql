@@ -139,7 +139,13 @@ class TestAIOMySQLSaver:
 
             assert result.checkpoint["pending_sends"] == ["w3v"]
 
-    @pytest.mark.parametrize("channel_values", [{"channel1": "channel1v"}, {}])
+    @pytest.mark.parametrize(
+        "channel_values",
+        [
+            {"channel1": "channel1v"},
+            {},  # to catch regression reported in #10
+        ],
+    )
     async def test_write_and_read_channel_values(
         self, channel_values: dict[str, Any]
     ) -> None:
@@ -155,7 +161,10 @@ class TestAIOMySQLSaver:
             chkpnt["id"] = "4"
             chkpnt["channel_values"] = channel_values
 
-            newversions: ChannelVersions = {"channel1": 1}
+            newversions: ChannelVersions = {
+                "channel1": 1,
+                "channel:with:colon": 1,  # to catch regression reported in #9
+            }
             chkpnt["channel_versions"] = newversions
 
             await saver.aput(config, chkpnt, {}, newversions)
