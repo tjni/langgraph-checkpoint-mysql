@@ -8,9 +8,10 @@ MySQLBase64Blob = str
 
 
 def decode_base64_blob(base64_blob: MySQLBase64Blob) -> bytes:
+    if not base64_blob:
+        return None
     _, data = base64_blob.rsplit(":", 1)
     return base64.b64decode(data)
-
 
 class MySQLPendingWrite(NamedTuple):
     """
