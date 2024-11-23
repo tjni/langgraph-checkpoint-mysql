@@ -71,8 +71,16 @@ class AIOMySQLSaver(BaseMySQLSaver):
 
         Returns:
             AIOMySQLSaver: A new AIOMySQLSaver instance.
+
+        Example:
+            conn_string=mysql+aiomysql://user:password@localhost/db?unix_socket=/path/to/socket
         """
         parsed = urllib.parse.urlparse(conn_string)
+
+        # In order to provide additional params via the connection string,
+        # we convert the parsed.query to a dict so we can access the values.
+        # This is necessary when using a unix socket, for example.
+        params_as_dict = dict(urllib.parse.parse_qsl(parsed.query))
 
         async with aiomysql.connect(
             host=parsed.hostname or "localhost",
@@ -80,6 +88,7 @@ class AIOMySQLSaver(BaseMySQLSaver):
             password=parsed.password or "",
             db=parsed.path[1:],
             port=parsed.port or 3306,
+            unix_socket=params_as_dict.get("unix_socket"),
             autocommit=True,
         ) as conn:
             # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
