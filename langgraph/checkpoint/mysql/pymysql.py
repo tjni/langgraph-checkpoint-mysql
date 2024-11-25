@@ -27,8 +27,16 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
 
         Returns:
             PyMySQLSaver: A new PyMySQLSaver instance.
+
+        Example:
+            conn_string=mysql+aiomysql://user:password@localhost/db?unix_socket=/path/to/socket
         """
         parsed = urllib.parse.urlparse(conn_string)
+
+        # In order to provide additional params via the connection string,
+        # we convert the parsed.query to a dict so we can access the values.
+        # This is necessary when using a unix socket, for example.
+        params_as_dict = dict(urllib.parse.parse_qsl(parsed.query))
 
         with pymysql.connect(
             host=parsed.hostname,
@@ -36,6 +44,7 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
             password=parsed.password or "",
             database=parsed.path[1:],
             port=parsed.port or 3306,
+            unix_socket=params_as_dict.get("unix_socket"),
             autocommit=True,
         ) as conn:
             yield cls(conn)
