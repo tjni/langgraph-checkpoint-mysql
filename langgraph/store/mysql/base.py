@@ -32,6 +32,8 @@ from langgraph.store.base import (
     SearchOp,
 )
 
+from langgraph.checkpoint.mysql import _ainternal as _ainternal
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +55,32 @@ CREATE INDEX store_prefix_idx ON store (prefix) USING btree;
 """,
 ]
 
+
+C = TypeVar("C", bound=Union[_ainternal.Conn])
+
+
+class PoolConfig(TypedDict, total=False):
+    """Connection pool settings for PostgreSQL connections.
+    Controls connection lifecycle and resource utilization:
+    - Small pools (1-5) suit low-concurrency workloads
+    - Larger pools handle concurrent requests but consume more resources
+    - Setting maxsize prevents resource exhaustion under load
+    """
+
+    minsize: int
+    """Minimum number of connections maintained in the pool. Defaults to 1."""
+
+    maxsize: Optional[int]
+    """Maximum number of connections allowed in the pool. None means unlimited."""
+
+    kwargs: dict
+    """Additional connection arguments passed to each connection in the pool.
+    
+    Default kwargs set automatically:
+    - autocommit: True
+    - prepare_threshold: 0
+    - row_factory: dict_row
+    """
 
 class DictCursor(Protocol):
     """

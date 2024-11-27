@@ -7,7 +7,7 @@ import pymysql.constants.ER
 import pytest
 
 DEFAULT_URI = "mysql://mysql:mysql@localhost:5441/mysql"
-
+DEFAULT_URI_WITH_SOCKET = f"{DEFAULT_URI}?query=unix_socket=/path/to/socket"
 
 @pytest.fixture(scope="function")
 async def conn() -> AsyncIterator[aiomysql.Connection]:

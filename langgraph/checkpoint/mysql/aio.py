@@ -18,6 +18,7 @@ from langgraph.checkpoint.base import (
     CheckpointTuple,
     get_checkpoint_id,
 )
+from langgraph.checkpoint.mysql import _ainternal
 from langgraph.checkpoint.mysql.base import BaseMySQLSaver
 from langgraph.checkpoint.mysql.utils import (
     deserialize_channel_values,
@@ -26,28 +27,18 @@ from langgraph.checkpoint.mysql.utils import (
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
-Conn = Union[aiomysql.Connection, aiomysql.Pool]
+import logging
 
+logger = logging.getLogger(__name__)
 
-@asynccontextmanager
-async def _get_connection(
-    conn: Conn,
-) -> AsyncIterator[aiomysql.Connection]:
-    if isinstance(conn, aiomysql.Connection):
-        yield conn
-    elif isinstance(conn, aiomysql.Pool):
-        async with conn.acquire() as _conn:
-            yield _conn
-    else:
-        raise TypeError(f"Invalid connection type: {type(conn)}")
-
+Conn = _ainternal.Conn  # For backward compatibility
 
 class AIOMySQLSaver(BaseMySQLSaver):
     lock: asyncio.Lock
 
     def __init__(
         self,
-        conn: Conn,
+        conn: _ainternal.Conn,
         serde: Optional[SerializerProtocol] = None,
     ) -> None:
         super().__init__(serde=serde)
@@ -82,7 +73,7 @@ class AIOMySQLSaver(BaseMySQLSaver):
         # This is necessary when using a unix socket, for example.
         params_as_dict = dict(urllib.parse.parse_qsl(parsed.query))
 
-        async with aiomysql.connect(
+        async with aiomysql.create_pool(
             host=parsed.hostname or "localhost",
             user=parsed.username,
             password=parsed.password or "",
@@ -90,12 +81,9 @@ class AIOMySQLSaver(BaseMySQLSaver):
             port=parsed.port or 3306,
             unix_socket=params_as_dict.get("unix_socket"),
             autocommit=True,
-        ) as conn:
-            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
-            # is merged into aiomysql.
-            await conn.set_charset(pymysql.connections.DEFAULT_CHARSET)
+            ) as conn:
 
-            yield AIOMySQLSaver(conn=conn, serde=serde)
+            yield cls(conn=conn, serde=serde)
 
     async def setup(self) -> None:
         """Set up the checkpoint database asynchronously.
@@ -170,15 +158,17 @@ class AIOMySQLSaver(BaseMySQLSaver):
                         deserialize_pending_sends(value["pending_sends"]),
                     ),
                     self._load_metadata(value["metadata"]),
-                    {
-                        "configurable": {
-                            "thread_id": value["thread_id"],
-                            "checkpoint_ns": value["checkpoint_ns"],
-                            "checkpoint_id": value["parent_checkpoint_id"],
+                    (
+                        {
+                            "configurable": {
+                                "thread_id": value["thread_id"],
+                                "checkpoint_ns": value["checkpoint_ns"],
+                                "checkpoint_id": value["parent_checkpoint_id"],
+                            }
+                            if value["parent_checkpoint_id"]
+                            else None
                         }
-                    }
-                    if value["parent_checkpoint_id"]
-                    else None,
+                    ),
                     await asyncio.to_thread(
                         self._load_writes,
                         deserialize_pending_writes(value["pending_writes"]),
@@ -231,15 +221,17 @@ class AIOMySQLSaver(BaseMySQLSaver):
                         deserialize_pending_sends(value["pending_sends"]),
                     ),
                     self._load_metadata(value["metadata"]),
-                    {
-                        "configurable": {
-                            "thread_id": thread_id,
-                            "checkpoint_ns": checkpoint_ns,
-                            "checkpoint_id": value["parent_checkpoint_id"],
+                    (
+                        {
+                            "configurable": {
+                                "thread_id": thread_id,
+                                "checkpoint_ns": checkpoint_ns,
+                                "checkpoint_id": value["parent_checkpoint_id"],
+                            }
                         }
-                    }
-                    if value["parent_checkpoint_id"]
-                    else None,
+                        if value["parent_checkpoint_id"]
+                        else None
+                    ),
                     await asyncio.to_thread(
                         self._load_writes,
                         deserialize_pending_writes(value["pending_writes"]),
@@ -340,7 +332,7 @@ class AIOMySQLSaver(BaseMySQLSaver):
 
     @asynccontextmanager
     async def _cursor(self) -> AsyncIterator[aiomysql.DictCursor]:
-        async with _get_connection(self.conn) as conn:
+        async with _ainternal.get_connection(self.conn) as conn:
             async with self.lock, conn.cursor(aiomysql.DictCursor) as cur:
                 yield cur
 
@@ -449,3 +441,5 @@ class AIOMySQLSaver(BaseMySQLSaver):
         return asyncio.run_coroutine_threadsafe(
             self.aput_writes(config, writes, task_id), self.loop
         ).result()
+
+__all__ = ["AIOMySQLSaver", "Conn"]

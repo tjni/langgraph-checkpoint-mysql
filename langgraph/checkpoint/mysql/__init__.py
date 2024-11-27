@@ -69,17 +69,6 @@ class ConnectionPool(Protocol, Generic[C]):
 Conn = Union[C, ConnectionPool[C]]
 
 
-@contextmanager
-def _get_connection(conn: Conn[C]) -> Iterator[C]:
-    if hasattr(conn, "cursor"):
-        yield cast(C, conn)
-    elif hasattr(conn, "get_connection"):
-        with cast(ConnectionPool[C], conn).get_connection() as _conn:
-            yield _conn
-    else:
-        raise TypeError(f"Invalid connection type: {type(conn)}")
-
-
 class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[C, R]):
     lock: threading.Lock
 
