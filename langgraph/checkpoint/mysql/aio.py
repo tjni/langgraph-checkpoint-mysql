@@ -37,6 +37,9 @@ async def _get_connection(
         yield conn
     elif isinstance(conn, aiomysql.Pool):
         async with conn.acquire() as _conn:
+            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
+            # is merged into aiomysql.
+            await _conn.set_charset(pymysql.connections.DEFAULT_CHARSET)
             yield _conn
     else:
         raise TypeError(f"Invalid connection type: {type(conn)}")
