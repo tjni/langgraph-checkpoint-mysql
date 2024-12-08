@@ -178,9 +178,39 @@ async def _store_aiomysql():
 
 
 @asynccontextmanager
+async def _store_aiomysql_pool():
+    database = f"test_{uuid4().hex[:16]}"
+    async with await aiomysql.connect(
+        **AIOMySQLStore.parse_conn_string(DEFAULT_MYSQL_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        async with aiomysql.create_pool(
+            **AIOMySQLStore.parse_conn_string(DEFAULT_MYSQL_URI + database),
+            maxsize=10,
+            autocommit=True,
+        ) as pool:
+            store = AIOMySQLStore(pool)
+            await store.setup()
+            yield store
+    finally:
+        async with await aiomysql.connect(
+            **AIOMySQLStore.parse_conn_string(DEFAULT_MYSQL_URI),
+            autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
 async def awith_store(store_name: Optional[str]) -> AsyncIterator[BaseStore]:
     if store_name == "aiomysql":
         async with _store_aiomysql() as store:
+            yield store
+    elif store_name == "aiomysql_pool":
+        async with _store_aiomysql_pool() as store:
             yield store
     else:
         raise NotImplementedError(f"Unknown store {store_name}")
@@ -189,4 +219,4 @@ async def awith_store(store_name: Optional[str]) -> AsyncIterator[BaseStore]:
 ALL_CHECKPOINTERS_SYNC = ["pymysql"]
 ALL_CHECKPOINTERS_ASYNC = ["aiomysql", "aiomysql_pool"]
 ALL_STORES_SYNC = ["pymysql"]
-ALL_STORES_ASYNC = ["aiomysql"]
+ALL_STORES_ASYNC = ["aiomysql", "aiomysql_pool"]

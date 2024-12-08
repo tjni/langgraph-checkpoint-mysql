@@ -25,6 +25,7 @@ from langgraph.checkpoint.base import (
     CheckpointTuple,
     get_checkpoint_id,
 )
+from langgraph.checkpoint.mysql import _internal
 from langgraph.checkpoint.mysql.base import BaseMySQLSaver
 from langgraph.checkpoint.mysql.utils import (
     deserialize_channel_values,
@@ -54,38 +55,18 @@ class DictCursor(Protocol):
     def fetchall(self) -> Sequence[dict[str, Any]]: ...
 
 
-C = TypeVar("C", bound=ContextManager, covariant=True)  # connection type
 R = TypeVar("R", bound=ContextManager, covariant=True)  # cursor type
 
 
-class ConnectionPool(Protocol, Generic[C]):
-    """Protocol that a MySQL connection pool should implement."""
-
-    def get_connection(self) -> C:
-        """Gets a connection from the connection pool."""
-        ...
+Conn = _internal.Conn  # For backward compatibility
 
 
-Conn = Union[C, ConnectionPool[C]]
-
-
-@contextmanager
-def _get_connection(conn: Conn[C]) -> Iterator[C]:
-    if hasattr(conn, "cursor"):
-        yield cast(C, conn)
-    elif hasattr(conn, "get_connection"):
-        with cast(ConnectionPool[C], conn).get_connection() as _conn:
-            yield _conn
-    else:
-        raise TypeError(f"Invalid connection type: {type(conn)}")
-
-
-class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[C, R]):
+class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
     lock: threading.Lock
 
     def __init__(
         self,
-        conn: Conn[C],
+        conn: _internal.Conn[_internal.C],
         serde: Optional[SerializerProtocol] = None,
     ) -> None:
         super().__init__(serde=serde)
@@ -97,9 +78,31 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[C, R]):
     def _is_no_such_table_error(e: Exception) -> bool:
         raise NotImplementedError
 
-    @contextmanager
-    def _cursor(self) -> Iterator[R]:
+    @staticmethod
+    def _get_cursor_from_connection(conn: _internal.C) -> R:
         raise NotImplementedError
+
+    @contextmanager
+    def _cursor(self, *, pipeline: bool = False) -> Iterator[R]:
+        """Create a database cursor as a context manager.
+
+        Args:
+            pipeline (bool): whether to use transaction context manager and handle concurrency
+        """
+        with _internal.get_connection(self.conn) as conn:
+            if pipeline:
+                with self.lock:
+                    conn.begin()
+                    try:
+                        with self._get_cursor_from_connection(conn) as cur:
+                            yield cur
+                        conn.commit()
+                    except:
+                        conn.rollback()
+                        raise
+            else:
+                with self.lock, self._get_cursor_from_connection(conn) as cur:
+                    yield cur
 
     def setup(self) -> None:
         """Set up the checkpoint database asynchronously.
@@ -340,7 +343,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[C, R]):
             }
         }
 
-        with self._cursor() as cur_:
+        with self._cursor(pipeline=True) as cur_:
             cur = cast(DictCursor, cur_)
             cur.executemany(
                 self.UPSERT_CHECKPOINT_BLOBS_SQL,
@@ -384,7 +387,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[C, R]):
             if all(w[0] in WRITES_IDX_MAP for w in writes)
             else self.INSERT_CHECKPOINT_WRITES_SQL
         )
-        with self._cursor() as cur_:
+        with self._cursor(pipeline=True) as cur_:
             cur = cast(DictCursor, cur_)
             cur.executemany(
                 query,

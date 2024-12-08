@@ -18,6 +18,7 @@ import orjson
 import pymysql
 import pymysql.constants.ER
 
+from langgraph.checkpoint.mysql import _ainternal
 from langgraph.store.base import GetOp, ListNamespacesOp, Op, PutOp, Result, SearchOp
 from langgraph.store.base.batch import AsyncBatchedBaseStore
 from langgraph.store.mysql.base import (
@@ -31,12 +32,12 @@ from langgraph.store.mysql.base import (
 logger = logging.getLogger(__name__)
 
 
-class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[aiomysql.Connection]):
-    __slots__ = ("_deserializer",)
+class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[_ainternal.Conn]):
+    __slots__ = ("_deserializer", "lock")
 
     def __init__(
         self,
-        conn: aiomysql.Connection,
+        conn: _ainternal.Conn,
         *,
         deserializer: Optional[
             Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]
@@ -45,66 +46,63 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[aiomysql.Connection]):
         super().__init__()
         self._deserializer = deserializer
         self.conn = conn
+        self.lock = asyncio.Lock()
         self.loop = asyncio.get_running_loop()
 
     async def abatch(self, ops: Iterable[Op]) -> list[Result]:
         grouped_ops, num_ops = _group_ops(ops)
         results: list[Result] = [None] * num_ops
 
-        tasks = []
+        async with _ainternal.get_connection(self.conn) as conn:
+            await self._execute_batch(grouped_ops, results, conn)
 
-        if GetOp in grouped_ops:
-            tasks.append(
-                self._batch_get_ops(
-                    cast(Sequence[tuple[int, GetOp]], grouped_ops[GetOp]), results
+        return results
+
+    async def _execute_batch(
+        self,
+        grouped_ops: dict,
+        results: list[Result],
+        conn: aiomysql.Connection,
+    ) -> None:
+        async with self._cursor(conn, pipeline=True) as cur:
+            if GetOp in grouped_ops:
+                await self._batch_get_ops(
+                    cast(Sequence[tuple[int, GetOp]], grouped_ops[GetOp]),
+                    results,
+                    cur,
                 )
-            )
 
-        if PutOp in grouped_ops:
-            tasks.append(
-                self._batch_put_ops(
-                    cast(Sequence[tuple[int, PutOp]], grouped_ops[PutOp])
-                )
-            )
-
-        if SearchOp in grouped_ops:
-            tasks.append(
-                self._batch_search_ops(
+            if SearchOp in grouped_ops:
+                await self._batch_search_ops(
                     cast(Sequence[tuple[int, SearchOp]], grouped_ops[SearchOp]),
                     results,
+                    cur,
                 )
-            )
 
-        if ListNamespacesOp in grouped_ops:
-            tasks.append(
-                self._batch_list_namespaces_ops(
+            if ListNamespacesOp in grouped_ops:
+                await self._batch_list_namespaces_ops(
                     cast(
                         Sequence[tuple[int, ListNamespacesOp]],
                         grouped_ops[ListNamespacesOp],
                     ),
                     results,
+                    cur,
                 )
-            )
 
-        await asyncio.gather(*tasks)
-
-        return results
-
-    def batch(self, ops: Iterable[Op]) -> list[Result]:
-        return asyncio.run_coroutine_threadsafe(self.abatch(ops), self.loop).result()
+            if PutOp in grouped_ops:
+                await self._batch_put_ops(
+                    cast(Sequence[tuple[int, PutOp]], grouped_ops[PutOp]),
+                    cur,
+                )
 
     async def _batch_get_ops(
         self,
         get_ops: Sequence[tuple[int, GetOp]],
         results: list[Result],
+        cur: aiomysql.DictCursor,
     ) -> None:
-        cursors = []
         for query, params, namespace, items in self._get_batch_GET_ops_queries(get_ops):
-            cur = await self._cursor()
             await cur.execute(query, params)
-            cursors.append((cur, namespace, items))
-
-        for cur, namespace, items in cursors:
             rows = cast(list[Row], await cur.fetchall())
             key_to_row = {row["key"]: row for row in rows}
             for idx, key in items:
@@ -119,26 +117,21 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[aiomysql.Connection]):
     async def _batch_put_ops(
         self,
         put_ops: Sequence[tuple[int, PutOp]],
+        cur: aiomysql.DictCursor,
     ) -> None:
         queries = self._get_batch_PUT_queries(put_ops)
         for query, params in queries:
-            cur = await self._cursor()
             await cur.execute(query, params)
 
     async def _batch_search_ops(
         self,
         search_ops: Sequence[tuple[int, SearchOp]],
         results: list[Result],
+        cur: aiomysql.DictCursor,
     ) -> None:
         queries = self._get_batch_search_queries(search_ops)
-        cursors: list[tuple[aiomysql.DictCursor, int]] = []
-
         for (query, params), (idx, _) in zip(queries, search_ops):
-            cur = await self._cursor()
             await cur.execute(query, params)
-            cursors.append((cur, idx))
-
-        for cur, idx in cursors:
             rows = cast(list[Row], await cur.fetchall())
             items = [
                 _row_to_item(
@@ -152,18 +145,42 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[aiomysql.Connection]):
         self,
         list_ops: Sequence[tuple[int, ListNamespacesOp]],
         results: list[Result],
+        cur: aiomysql.DictCursor,
     ) -> None:
         queries = self._get_batch_list_namespaces_queries(list_ops)
-        cursors: list[tuple[aiomysql.DictCursor, int]] = []
         for (query, params), (idx, _) in zip(queries, list_ops):
-            cur = await self._cursor()
             await cur.execute(query, params)
-            cursors.append((cur, idx))
-
-        for cur, idx in cursors:
             rows = cast(list[dict], await cur.fetchall())
             namespaces = [_decode_ns_bytes(row["truncated_prefix"]) for row in rows]
             results[idx] = namespaces
+
+    @asynccontextmanager
+    async def _cursor(
+        self, conn: aiomysql.Connection, *, pipeline: bool = False
+    ) -> AsyncIterator[aiomysql.DictCursor]:
+        """Create a database cursor as a context manager.
+        Args:
+            conn: The database connection to use
+            pipeline: whether to use transaction context manager and handle concurrency
+        """
+        if pipeline:
+            # a connection can only be used by one
+            # thread/coroutine at a time, so we acquire a lock
+            async with self.lock:
+                await conn.begin()
+                try:
+                    async with conn.cursor(aiomysql.DictCursor) as cur:
+                        yield cur
+                    await conn.commit()
+                except:
+                    await conn.rollback()
+                    raise
+        else:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                yield cur
+
+    def batch(self, ops: Iterable[Op]) -> list[Result]:
+        return asyncio.run_coroutine_threadsafe(self.abatch(ops), self.loop).result()
 
     @staticmethod
     def parse_conn_string(conn_string: str) -> dict[str, Any]:
@@ -214,33 +231,33 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[aiomysql.Connection]):
         already exist and runs database migrations. It MUST be called directly by the user
         the first time the store is used.
         """
-        async with self.conn.cursor(aiomysql.DictCursor) as cur:
-            try:
-                await cur.execute(
-                    "SELECT v FROM store_migrations ORDER BY v DESC LIMIT 1"
-                )
-                row = cast(dict, await cur.fetchone())
-                if row is None:
-                    version = -1
-                else:
-                    version = row["v"]
-            except pymysql.ProgrammingError as e:
-                if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
-                    raise
-                version = -1
-                # Create store_migrations table if it doesn't exist
-                await cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS store_migrations (
-                        v INTEGER PRIMARY KEY
+        async with _ainternal.get_connection(self.conn) as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                try:
+                    await cur.execute(
+                        "SELECT v FROM store_migrations ORDER BY v DESC LIMIT 1"
                     )
-                    """
-                )
-            for v, migration in enumerate(
-                self.MIGRATIONS[version + 1 :], start=version + 1
-            ):
-                await cur.execute(migration)
-                await cur.execute("INSERT INTO store_migrations (v) VALUES (%s)", (v,))
-
-    async def _cursor(self) -> aiomysql.DictCursor:
-        return await self.conn.cursor(aiomysql.DictCursor)
+                    row = cast(dict, await cur.fetchone())
+                    if row is None:
+                        version = -1
+                    else:
+                        version = row["v"]
+                except pymysql.ProgrammingError as e:
+                    if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
+                        raise
+                    version = -1
+                    # Create store_migrations table if it doesn't exist
+                    await cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS store_migrations (
+                            v INTEGER PRIMARY KEY
+                        )
+                        """
+                    )
+                for v, migration in enumerate(
+                    self.MIGRATIONS[version + 1 :], start=version + 1
+                ):
+                    await cur.execute(migration)
+                    await cur.execute(
+                        "INSERT INTO store_migrations (v) VALUES (%s)", (v,)
+                    )

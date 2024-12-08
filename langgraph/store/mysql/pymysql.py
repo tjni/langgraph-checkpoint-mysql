@@ -58,5 +58,6 @@ class PyMySQLStore(BaseSyncMySQLStore[pymysql.Connection, DictCursor]):
         )
 
     @override
-    def _cursor(self) -> DictCursor:
-        return self.conn.cursor(DictCursor)
+    @staticmethod
+    def _get_cursor_from_connection(conn: pymysql.Connection) -> DictCursor:
+        return conn.cursor(DictCursor)

@@ -10,8 +10,6 @@ start-mysql:
 stop-mysql:
 	docker compose -f tests/compose-mysql.yml down --remove-orphans -v
 
-_run_tests:
-
 MYSQL_VERSIONS ?= 8
 test_mysql_version:
 	@echo "Testing MySQL $(MYSQL_VERSION)"
