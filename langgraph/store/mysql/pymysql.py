@@ -1,6 +1,6 @@
 import urllib.parse
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Any, Iterator
 
 import pymysql
 import pymysql.constants.ER
@@ -11,6 +11,24 @@ from langgraph.store.mysql.base import BaseSyncMySQLStore
 
 
 class PyMySQLStore(BaseSyncMySQLStore[pymysql.Connection, DictCursor]):
+    @staticmethod
+    def parse_conn_string(conn_string: str) -> dict[str, Any]:
+        parsed = urllib.parse.urlparse(conn_string)
+
+        # In order to provide additional params via the connection string,
+        # we convert the parsed.query to a dict so we can access the values.
+        # This is necessary when using a unix socket, for example.
+        params_as_dict = dict(urllib.parse.parse_qsl(parsed.query))
+
+        return {
+            "host": parsed.hostname,
+            "user": parsed.username,
+            "password": parsed.password or "",
+            "database": parsed.path[1:] or None,
+            "port": parsed.port or 3306,
+            "unix_socket": params_as_dict.get("unix_socket"),
+        }
+
     @classmethod
     @contextmanager
     def from_conn_string(
@@ -25,14 +43,8 @@ class PyMySQLStore(BaseSyncMySQLStore[pymysql.Connection, DictCursor]):
         Returns:
             PyMySQLStore: A new PyMySQLStore instance.
         """
-        parsed = urllib.parse.urlparse(conn_string)
-
         with pymysql.connect(
-            host=parsed.hostname,
-            user=parsed.username,
-            password=parsed.password or "",
-            database=parsed.path[1:],
-            port=parsed.port or 3306,
+            **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
             yield cls(conn)

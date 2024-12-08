@@ -165,6 +165,24 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[aiomysql.Connection]):
             namespaces = [_decode_ns_bytes(row["truncated_prefix"]) for row in rows]
             results[idx] = namespaces
 
+    @staticmethod
+    def parse_conn_string(conn_string: str) -> dict[str, Any]:
+        parsed = urllib.parse.urlparse(conn_string)
+
+        # In order to provide additional params via the connection string,
+        # we convert the parsed.query to a dict so we can access the values.
+        # This is necessary when using a unix socket, for example.
+        params_as_dict = dict(urllib.parse.parse_qsl(parsed.query))
+
+        return {
+            "host": parsed.hostname or "localhost",
+            "user": parsed.username,
+            "password": parsed.password or "",
+            "db": parsed.path[1:] or None,
+            "port": parsed.port or 3306,
+            "unix_socket": params_as_dict.get("unix_socket"),
+        }
+
     @classmethod
     @asynccontextmanager
     async def from_conn_string(
@@ -179,14 +197,8 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[aiomysql.Connection]):
         Returns:
             AIOMySQLStore: A new AIOMySQLStore instance.
         """
-        parsed = urllib.parse.urlparse(conn_string)
-
         async with aiomysql.connect(
-            host=parsed.hostname or "localhost",
-            user=parsed.username,
-            password=parsed.password or "",
-            db=parsed.path[1:],
-            port=parsed.port or 3306,
+            **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
             # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119

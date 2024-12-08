@@ -56,6 +56,24 @@ class AIOMySQLSaver(BaseMySQLSaver):
         self.lock = asyncio.Lock()
         self.loop = asyncio.get_running_loop()
 
+    @staticmethod
+    def parse_conn_string(conn_string: str) -> dict[str, Any]:
+        parsed = urllib.parse.urlparse(conn_string)
+
+        # In order to provide additional params via the connection string,
+        # we convert the parsed.query to a dict so we can access the values.
+        # This is necessary when using a unix socket, for example.
+        params_as_dict = dict(urllib.parse.parse_qsl(parsed.query))
+
+        return {
+            "host": parsed.hostname or "localhost",
+            "user": parsed.username,
+            "password": parsed.password or "",
+            "db": parsed.path[1:] or None,
+            "port": parsed.port or 3306,
+            "unix_socket": params_as_dict.get("unix_socket"),
+        }
+
     @classmethod
     @asynccontextmanager
     async def from_conn_string(
@@ -75,20 +93,8 @@ class AIOMySQLSaver(BaseMySQLSaver):
         Example:
             conn_string=mysql+aiomysql://user:password@localhost/db?unix_socket=/path/to/socket
         """
-        parsed = urllib.parse.urlparse(conn_string)
-
-        # In order to provide additional params via the connection string,
-        # we convert the parsed.query to a dict so we can access the values.
-        # This is necessary when using a unix socket, for example.
-        params_as_dict = dict(urllib.parse.parse_qsl(parsed.query))
-
         async with aiomysql.connect(
-            host=parsed.hostname or "localhost",
-            user=parsed.username,
-            password=parsed.password or "",
-            db=parsed.path[1:],
-            port=parsed.port or 3306,
-            unix_socket=params_as_dict.get("unix_socket"),
+            **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
             # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
