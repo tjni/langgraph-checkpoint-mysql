@@ -32,6 +32,10 @@ mypy = "^1.10.0"
 pymysql = "^1.1.1"
 aiomysql = "^0.2.0"
 types-PyMySQL = "^1.1.0"
+langgraph = "0.2.49"
+syrupy = "^4.0.2"
+pytest-repeat = "^0.9.3"
+pytest-xdist = {extras = ["psutil"], version = "^3.6.1"}
 
 [tool.pytest.ini_options]
 # --strict-markers will raise errors on unknown marks.
@@ -57,6 +61,9 @@ lint.select = [
   "I",  # isort
 ]
 lint.ignore = ["E501", "B008", "UP007", "UP006"]
+exclude = [
+  "tests/langgraph"
+]
 
 [tool.mypy]
 # https://mypy.readthedocs.io/en/stable/config_file.html
@@ -67,3 +74,6 @@ warn_unused_ignores = "True"
 warn_redundant_casts = "True"
 allow_redefinition = "True"
 disable_error_code = "typeddict-item, return-value"
+exclude = [
+  "tests/langgraph"
+]

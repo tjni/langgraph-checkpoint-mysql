@@ -15,3 +15,10 @@ services:
       retries: 5
       interval: 60s
       start_interval: 1s
+    configs:
+      - source: init.sql
+        target: /docker-entrypoint-initdb.d/init.sql
+configs:
+  init.sql:
+    content: |
+      GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'%';
