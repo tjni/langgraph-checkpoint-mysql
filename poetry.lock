@@ -374,19 +374,19 @@ typing-extensions = ">=4.7"
 
 [[package]]
 name = "langgraph"
-version = "0.2.49"
+version = "0.2.54"
 description = "Building stateful, multi-actor applications with LLMs"
 optional = false
 python-versions = "<4.0,>=3.9.0"
 files = [
-    {file = "langgraph-0.2.49-py3-none-any.whl", hash = "sha256:00691d1adac59f9ebd5d481b07fbbe952f1e8a76cbe34754de76a665c39f5dcf"},
-    {file = "langgraph-0.2.49.tar.gz", hash = "sha256:348b8d845acf63911b96d4fed354babda9d7ebc5b8cd16a33309ac21c7271a57"},
+    {file = "langgraph-0.2.54-py3-none-any.whl", hash = "sha256:73c514cfd798cbb40da369510d2086c77cf3572e85e60f9aa459321ee9ec4f21"},
+    {file = "langgraph-0.2.54.tar.gz", hash = "sha256:be9d7572959de6f30c27e09168c8f78f6f86648a60ebb67ae815d159255a6b52"},
 ]
 
 [package.dependencies]
 langchain-core = ">=0.2.43,<0.3.0 || >0.3.0,<0.3.1 || >0.3.1,<0.3.2 || >0.3.2,<0.3.3 || >0.3.3,<0.3.4 || >0.3.4,<0.3.5 || >0.3.5,<0.3.6 || >0.3.6,<0.3.7 || >0.3.7,<0.3.8 || >0.3.8,<0.3.9 || >0.3.9,<0.3.10 || >0.3.10,<0.3.11 || >0.3.11,<0.3.12 || >0.3.12,<0.3.13 || >0.3.13,<0.3.14 || >0.3.14,<0.4.0"
 langgraph-checkpoint = ">=2.0.4,<3.0.0"
-langgraph-sdk = ">=0.1.32,<0.2.0"
+langgraph-sdk = ">=0.1.42,<0.2.0"
 
 [[package]]
 name = "langgraph-checkpoint"
@@ -1209,4 +1209,4 @@ pymysql = ["pymysql"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9.0,<4.0"
-content-hash = "debc6fbb31fac68ce85f48064f28a507da3a066bbb5d779a1be21940b8f97e0c"
+content-hash = "2849ae4e30c03ee8dee4eaf5721c53885dca1ac1fdc13cdebdc08c43c533c0db"
