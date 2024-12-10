@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 from uuid import uuid4
@@ -19,7 +20,7 @@ from tests.conftest import DEFAULT_BASE_URI
 
 
 @contextmanager
-def _base_saver():
+def _base_saver() -> Iterator[PyMySQLSaver]:
     """Fixture for regular connection mode testing."""
     database = f"test_{uuid4().hex[:16]}"
     # create unique db
@@ -43,14 +44,14 @@ def _base_saver():
 
 
 @contextmanager
-def _saver(name: str):
+def _saver(name: str) -> Iterator[PyMySQLSaver]:
     if name == "base":
         with _base_saver() as saver:
             yield saver
 
 
 @pytest.fixture
-def test_data():
+def test_data() -> dict[str, Any]:
     """Fixture providing test data for checkpoint tests."""
     config_1: RunnableConfig = {
         "configurable": {
@@ -101,7 +102,7 @@ def test_data():
 
 
 @pytest.mark.parametrize("saver_name", ["base"])
-def test_search(saver_name: str, test_data) -> None:
+def test_search(saver_name: str, test_data: dict[str, Any]) -> None:
     with _saver(saver_name) as saver:
         configs = test_data["configs"]
         checkpoints = test_data["checkpoints"]
@@ -144,7 +145,7 @@ def test_search(saver_name: str, test_data) -> None:
 
 
 @pytest.mark.parametrize("saver_name", ["base"])
-def test_null_chars(saver_name: str, test_data) -> None:
+def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
     with _saver(saver_name) as saver:
         config = saver.put(
             test_data["configs"][0],
@@ -160,7 +161,9 @@ def test_null_chars(saver_name: str, test_data) -> None:
 
 
 @pytest.mark.parametrize("saver_name", ["base"])
-def test_write_and_read_pending_writes_and_sends(saver_name: str, test_data) -> None:
+def test_write_and_read_pending_writes_and_sends(
+    saver_name: str, test_data: dict[str, Any]
+) -> None:
     with _saver(saver_name) as saver:
         config: RunnableConfig = {
             "configurable": {
