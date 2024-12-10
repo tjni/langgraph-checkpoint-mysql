@@ -271,6 +271,7 @@
   
   '''
 # ---
+
 # name: test_weather_subgraph[aiomysql]
   '''
   %%{init: {'flowchart': {'curve': 'linear'}}}%%

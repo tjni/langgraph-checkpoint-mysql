@@ -1,7 +1,8 @@
 """Shared utility functions for the MySQL checkpoint & storage classes."""
 
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import ContextManager, Generic, Iterator, Protocol, TypeVar, Union, cast
+from typing import ContextManager, Generic, Protocol, TypeVar, Union, cast
 
 
 class Connection(ContextManager, Protocol):

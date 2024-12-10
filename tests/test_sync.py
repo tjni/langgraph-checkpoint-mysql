@@ -1,7 +1,6 @@
 from typing import Any
 
 import pytest
-from conftest import DEFAULT_URI  # type: ignore
 from langchain_core.runnables import RunnableConfig
 
 from langgraph.checkpoint.base import (
@@ -13,6 +12,7 @@ from langgraph.checkpoint.base import (
 )
 from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
+from tests.conftest import DEFAULT_URI
 
 
 class TestPyMySQLSaver:

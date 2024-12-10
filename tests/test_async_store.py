@@ -1,14 +1,14 @@
 # type: ignore
 import time
 import uuid
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import aiomysql  # type: ignore
 import pytest
-from conftest import DEFAULT_BASE_URI, DEFAULT_URI  # type: ignore
 
 from langgraph.store.base import GetOp, Item, ListNamespacesOp, PutOp, SearchOp
 from langgraph.store.mysql import AIOMySQLStore
+from tests.conftest import DEFAULT_BASE_URI, DEFAULT_URI
 
 
 @pytest.fixture(scope="function", params=["default", "pool"])

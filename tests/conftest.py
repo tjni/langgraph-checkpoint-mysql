@@ -1,5 +1,5 @@
 import urllib.parse
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import aiomysql  # type: ignore
 import pymysql

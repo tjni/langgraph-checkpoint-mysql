@@ -5,7 +5,11 @@
 ######################
 
 start-mysql:
-	MYSQL_VERSION=${MYSQL_VERSION:-8} docker compose -f tests/compose-mysql.yml up -V --force-recreate --wait
+	MYSQL_VERSION=${MYSQL_VERSION:-8} docker compose -f tests/compose-mysql.yml up -V --force-recreate --wait || ( \
+    echo "Failed to start MySQL, printing logs..."; \
+		docker compose -f tests/compose-mysql.yml logs; \
+		exit 1 \
+  )
 
 stop-mysql:
 	docker compose -f tests/compose-mysql.yml down --remove-orphans -v
@@ -14,9 +18,9 @@ MYSQL_VERSIONS ?= 8
 test_mysql_version:
 	@echo "Testing MySQL $(MYSQL_VERSION)"
 	@MYSQL_VERSION=$(MYSQL_VERSION) make start-mysql
-	@poetry run pytest --ignore=tests/langgraph $(TEST) && \
-	poetry run pytest -n auto --dist worksteal tests/langgraph && \
-	LANGGRAPH_FF_SEND_V2=true poetry run pytest -n auto --dist worksteal tests/langgraph || ( \
+	@poetry run pytest --ignore=langgraph-tests $(TEST) && \
+	poetry run pytest -n auto --dist worksteal langgraph-tests && \
+	LANGGRAPH_FF_SEND_V2=true poetry run pytest -n auto --dist worksteal langgraph-tests || ( \
 	  EXIT_CODE=$$?; \
 	  make stop-mysql; \
 	  echo "Finished testing MySQL $(MYSQL_VERSION); Exit code: $$EXIT_CODE"; \
