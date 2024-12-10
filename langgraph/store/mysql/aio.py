@@ -8,7 +8,6 @@ from typing import Any, Callable, Optional, Union, cast
 import aiomysql  # type: ignore
 import orjson
 import pymysql
-import pymysql.constants.ER
 
 from langgraph.checkpoint.mysql import _ainternal
 from langgraph.store.base import (
@@ -112,24 +111,19 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[_ainternal.Conn]):
         """
 
         async def _get_version(cur: aiomysql.DictCursor, table: str) -> int:
-            try:
-                await cur.execute(f"SELECT v FROM {table} ORDER BY v DESC LIMIT 1")
-                row = await cur.fetchone()
-                if row is None:
-                    version = -1
-                else:
-                    version = row["v"]
-            except pymysql.ProgrammingError as e:
-                if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
-                    raise
-                version = -1
-                await cur.execute(
-                    f"""
-                    CREATE TABLE IF NOT EXISTS {table} (
-                        v INTEGER PRIMARY KEY
-                    )
-                """
+            await cur.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {table} (
+                    v INTEGER PRIMARY KEY
                 )
+            """
+            )
+            await cur.execute(f"SELECT v FROM {table} ORDER BY v DESC LIMIT 1")
+            row = await cur.fetchone()
+            if row is None:
+                version = -1
+            else:
+                version = row["v"]
             return version
 
         async with _ainternal.get_connection(self.conn) as conn:

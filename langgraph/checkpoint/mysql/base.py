@@ -57,6 +57,15 @@ MIGRATIONS = [
     PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
 );""",
     "ALTER TABLE checkpoint_blobs MODIFY COLUMN `blob` LONGBLOB;",
+    """
+    CREATE INDEX checkpoints_thread_id_idx ON checkpoints (thread_id);
+    """,
+    """
+    CREATE INDEX checkpoint_blobs_thread_id_idx ON checkpoint_blobs (thread_id);
+    """,
+    """
+    CREATE INDEX checkpoint_writes_thread_id_idx ON checkpoint_writes (thread_id);
+    """,
 ]
 
 SELECT_SQL = f"""
