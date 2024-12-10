@@ -229,13 +229,177 @@ async def test_dynamic_interrupt(checkpointer_name: str) -> None:
         )
 
         # clear the interrupt and next tasks
-        await tool_two.aupdate_state(thread1, None)
+        await tool_two.aupdate_state(thread1, None, as_node=END)
         # interrupt is cleared, as well as the next tasks
         tup = await tool_two.checkpointer.aget_tuple(thread1)
         assert await tool_two.aget_state(thread1) == StateSnapshot(
             values={"my_key": "value ⛰️", "market": "DE"},
             next=(),
             tasks=(),
+            config=tup.config,
+            created_at=tup.checkpoint["ts"],
+            metadata={
+                "parents": {},
+                "source": "update",
+                "step": 1,
+                "writes": {},
+                "thread_id": "1",
+            },
+            parent_config=[
+                c async for c in tool_two.checkpointer.alist(thread1, limit=2)
+            ][-1].config,
+        )
+
+
+@pytest.mark.skipif(not FF_SEND_V2, reason="send v2 is not enabled")
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="Python 3.11+ is required for async contextvars support",
+)
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
+async def test_copy_checkpoint(checkpointer_name: str) -> None:
+    class State(TypedDict):
+        my_key: Annotated[str, operator.add]
+        market: str
+    def tool_one(s: State) -> State:
+        return {"my_key": " one"}
+    tool_two_node_count = 0
+    def tool_two_node(s: State) -> State:
+        nonlocal tool_two_node_count
+        tool_two_node_count += 1
+        if s["market"] == "DE":
+            answer = interrupt("Just because...")
+        else:
+            answer = " all good"
+        return {"my_key": answer}
+    def start(state: State) -> list[Union[Send, str]]:
+        return ["tool_two", Send("tool_one", state)]
+    tool_two_graph = StateGraph(State)
+    tool_two_graph.add_node("tool_two", tool_two_node, retry=RetryPolicy())
+    tool_two_graph.add_node("tool_one", tool_one)
+    tool_two_graph.set_conditional_entry_point(start)
+    tool_two = tool_two_graph.compile()
+    tracer = FakeTracer()
+    assert await tool_two.ainvoke(
+        {"my_key": "value", "market": "DE"}, {"callbacks": [tracer]}
+    ) == {
+        "my_key": "value one",
+        "market": "DE",
+    }
+    assert tool_two_node_count == 1, "interrupts aren't retried"
+    assert len(tracer.runs) == 1
+    run = tracer.runs[0]
+    assert run.end_time is not None
+    assert run.error is None
+    assert run.outputs == {"market": "DE", "my_key": "value one"}
+    assert await tool_two.ainvoke({"my_key": "value", "market": "US"}) == {
+        "my_key": "value one all good",
+        "market": "US",
+    }
+    async with awith_checkpointer(checkpointer_name) as checkpointer:
+        tool_two = tool_two_graph.compile(checkpointer=checkpointer)
+        # missing thread_id
+        with pytest.raises(ValueError, match="thread_id"):
+            await tool_two.ainvoke({"my_key": "value", "market": "DE"})
+        # flow: interrupt -> resume with answer
+        thread2 = {"configurable": {"thread_id": "2"}}
+        # stop when about to enter node
+        assert [
+            c
+            async for c in tool_two.astream(
+                {"my_key": "value ⛰️", "market": "DE"}, thread2
+            )
+        ] == [
+            {
+                "tool_one": {"my_key": " one"},
+            },
+            {
+                "__interrupt__": (
+                    Interrupt(
+                        value="Just because...",
+                        resumable=True,
+                        ns=[AnyStr("tool_two:")],
+                    ),
+                )
+            },
+        ]
+        # resume with answer
+        assert [
+            c async for c in tool_two.astream(Command(resume=" my answer"), thread2)
+        ] == [
+            {"tool_two": {"my_key": " my answer"}},
+        ]
+        # flow: interrupt -> clear tasks
+        thread1 = {"configurable": {"thread_id": "1"}}
+        # stop when about to enter node
+        assert await tool_two.ainvoke(
+            {"my_key": "value ⛰️", "market": "DE"}, thread1
+        ) == {
+            "my_key": "value ⛰️ one",
+            "market": "DE",
+        }
+        assert [c.metadata async for c in tool_two.checkpointer.alist(thread1)] == [
+            {
+                "parents": {},
+                "source": "loop",
+                "step": 0,
+                "writes": {"tool_one": {"my_key": " one"}},
+                "thread_id": "1",
+            },
+            {
+                "parents": {},
+                "source": "input",
+                "step": -1,
+                "writes": {"__start__": {"my_key": "value ⛰️", "market": "DE"}},
+                "thread_id": "1",
+            },
+        ]
+        tup = await tool_two.checkpointer.aget_tuple(thread1)
+        assert await tool_two.aget_state(thread1) == StateSnapshot(
+            values={"my_key": "value ⛰️ one", "market": "DE"},
+            next=("tool_two",),
+            tasks=(
+                PregelTask(
+                    AnyStr(),
+                    "tool_two",
+                    (PULL, "tool_two"),
+                    interrupts=(
+                        Interrupt(
+                            value="Just because...",
+                            resumable=True,
+                            ns=[AnyStr("tool_two:")],
+                        ),
+                    ),
+                ),
+            ),
+            config=tup.config,
+            created_at=tup.checkpoint["ts"],
+            metadata={
+                "parents": {},
+                "source": "loop",
+                "step": 0,
+                "writes": {"tool_one": {"my_key": " one"}},
+                "thread_id": "1",
+            },
+            parent_config=[
+                c async for c in tool_two.checkpointer.alist(thread1, limit=2)
+            ][-1].config,
+        )
+        # clear the interrupt and next tasks
+        await tool_two.aupdate_state(thread1, None)
+        # interrupt is cleared, next task is kept
+        tup = await tool_two.checkpointer.aget_tuple(thread1)
+        assert await tool_two.aget_state(thread1) == StateSnapshot(
+            values={"my_key": "value ⛰️ one", "market": "DE"},
+            next=("tool_two",),
+            tasks=(
+                PregelTask(
+                    AnyStr(),
+                    "tool_two",
+                    (PULL, "tool_two"),
+                    interrupts=(),
+                ),
+            ),
             config=tup.config,
             created_at=tup.checkpoint["ts"],
             metadata={
@@ -10066,3 +10230,83 @@ async def test_store_injected_async(checkpointer_name: str, store_name: str) -> 
         assert (
             len((await the_store.asearch(namespace))) == 1
         )  # still overwriting the same one
+
+
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
+async def test_parent_command(checkpointer_name: str) -> None:
+    from langchain_core.messages import BaseMessage
+    from langchain_core.tools import tool
+
+    @tool(return_direct=True)
+    def get_user_name() -> GraphCommand:
+        """Retrieve user name"""
+        return GraphCommand(update={"user_name": "Meow"}, graph=GraphCommand.PARENT)
+
+    subgraph_builder = StateGraph(MessagesState)
+    subgraph_builder.add_node("tool", get_user_name)
+    subgraph_builder.add_edge(START, "tool")
+    subgraph = subgraph_builder.compile()
+
+    class CustomParentState(TypedDict):
+        messages: Annotated[list[BaseMessage], add_messages]
+        # this key is not available to the child graph
+        user_name: str
+
+    builder = StateGraph(CustomParentState)
+    builder.add_node("alice", subgraph)
+    builder.add_edge(START, "alice")
+    async with awith_checkpointer(checkpointer_name) as checkpointer:
+        graph = builder.compile(checkpointer=checkpointer)
+
+        config = {"configurable": {"thread_id": "1"}}
+
+        assert await graph.ainvoke(
+            {"messages": [("user", "get user name")]}, config
+        ) == {
+            "messages": [
+                _AnyIdHumanMessage(
+                    content="get user name", additional_kwargs={}, response_metadata={}
+                ),
+            ],
+            "user_name": "Meow",
+        }
+        assert await graph.aget_state(config) == StateSnapshot(
+            values={
+                "messages": [
+                    _AnyIdHumanMessage(
+                        content="get user name",
+                        additional_kwargs={},
+                        response_metadata={},
+                    ),
+                ],
+                "user_name": "Meow",
+            },
+            next=(),
+            config={
+                "configurable": {
+                    "thread_id": "1",
+                    "checkpoint_ns": "",
+                    "checkpoint_id": AnyStr(),
+                }
+            },
+            metadata={
+                "source": "loop",
+                "writes": {
+                    "alice": {
+                        "user_name": "Meow",
+                    }
+                },
+                "thread_id": "1",
+                "step": 1,
+                "parents": {},
+            },
+            created_at=AnyStr(),
+            parent_config={
+                "configurable": {
+                    "thread_id": "1",
+                    "checkpoint_ns": "",
+                    "checkpoint_id": AnyStr(),
+                }
+            },
+            tasks=(),
+        )
