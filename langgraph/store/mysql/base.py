@@ -307,10 +307,6 @@ class BaseSyncMySQLStore(
         self.lock = threading.Lock()
 
     @staticmethod
-    def _is_no_such_table_error(e: Exception) -> bool:
-        raise NotImplementedError
-
-    @staticmethod
     def _get_cursor_from_connection(conn: _internal.C) -> R:
         raise NotImplementedError
 
@@ -440,32 +436,27 @@ class BaseSyncMySQLStore(
         already exist and runs database migrations. It MUST be called directly by the user
         the first time the store is used.
         """
-        with self._cursor() as cur:
-            try:
-                cur.execute("SELECT v FROM store_migrations ORDER BY v DESC LIMIT 1")
-                row = cur.fetchone()
-                if row is None:
-                    version = -1
-                else:
-                    version = row["v"]
-                print(f"Version: {version}")
-            except Exception as e:
-                if not self._is_no_such_table_error(e):
-                    raise
-                cast(Any, self.conn).rollback()
-                version = -1
-                # Create store_migrations table if it doesn't exist
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS store_migrations (
-                        v INTEGER PRIMARY KEY
-                    )
-                """
+
+        def _get_version(cur: R, table: str) -> int:
+            cur.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {table} (
+                    v INTEGER PRIMARY KEY
                 )
-            for v, migration in enumerate(
-                self.MIGRATIONS[version + 1 :], start=version + 1
-            ):
-                cur.execute(migration)
+            """
+            )
+            cur.execute(f"SELECT v FROM {table} ORDER BY v DESC LIMIT 1")
+            row = cur.fetchone()
+            if row is None:
+                version = -1
+            else:
+                version = row["v"]
+            return version
+
+        with self._cursor() as cur:
+            version = _get_version(cur, table="store_migrations")
+            for v, sql in enumerate(self.MIGRATIONS[version + 1 :], start=version + 1):
+                cur.execute(sql)
                 cur.execute("INSERT INTO store_migrations (v) VALUES (%s)", (v,))
 
 

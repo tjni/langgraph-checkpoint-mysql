@@ -3,7 +3,6 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 import pymysql
-import pymysql.constants.ER
 from pymysql.cursors import DictCursor
 from typing_extensions import Self, override
 
@@ -48,14 +47,6 @@ class PyMySQLStore(BaseSyncMySQLStore[pymysql.Connection, DictCursor]):
             autocommit=True,
         ) as conn:
             yield cls(conn)
-
-    @override
-    @staticmethod
-    def _is_no_such_table_error(e: Exception) -> bool:
-        return (
-            isinstance(e, pymysql.ProgrammingError)
-            and e.args[0] == pymysql.constants.ER.NO_SUCH_TABLE
-        )
 
     @override
     @staticmethod
