@@ -49,7 +49,7 @@ from langgraph.constants import (
     START,
 )
 from langgraph.errors import MultipleSubgraphsError, NodeInterrupt
-from langgraph.graph import END, Graph, GraphCommand, StateGraph
+from langgraph.graph import END, Graph, StateGraph
 from langgraph.graph.message import MessageGraph, MessagesState, add_messages
 from langgraph.managed.shared_value import SharedValue
 from langgraph.prebuilt.tool_node import ToolNode
@@ -1697,15 +1697,15 @@ async def test_send_sequences(checkpointer_name: str) -> None:
                 if isinstance(state, list)  # or isinstance(state, Control)
                 else ["|".join((self.name, str(state)))]
             )
-            if isinstance(state, GraphCommand):
+            if isinstance(state, Command):
                 return replace(state, update=update)
             else:
                 return update
 
     async def send_for_fun(state):
         return [
-            Send("2", GraphCommand(send=Send("2", 3))),
-            Send("2", GraphCommand(send=Send("2", 4))),
+            Send("2", Command(goto=Send("2", 3))),
+            Send("2", Command(goto=Send("2", 4))),
             "3.1",
         ]
 
@@ -1726,8 +1726,8 @@ async def test_send_sequences(checkpointer_name: str) -> None:
         == [
             "0",
             "1",
-            "2|Command(send=Send(node='2', arg=3))",
-            "2|Command(send=Send(node='2', arg=4))",
+            "2|Command(goto=Send(node='2', arg=3))",
+            "2|Command(goto=Send(node='2', arg=4))",
             "2|3",
             "2|4",
             "3",
@@ -1738,8 +1738,8 @@ async def test_send_sequences(checkpointer_name: str) -> None:
             "0",
             "1",
             "3.1",
-            "2|Command(send=Send(node='2', arg=3))",
-            "2|Command(send=Send(node='2', arg=4))",
+            "2|Command(goto=Send(node='2', arg=3))",
+            "2|Command(goto=Send(node='2', arg=4))",
             "3",
             "2|3",
             "2|4",
@@ -1756,16 +1756,16 @@ async def test_send_sequences(checkpointer_name: str) -> None:
         assert await graph.ainvoke(["0"], thread1) == [
             "0",
             "1",
-            "2|Command(send=Send(node='2', arg=3))",
-            "2|Command(send=Send(node='2', arg=4))",
+            "2|Command(goto=Send(node='2', arg=3))",
+            "2|Command(goto=Send(node='2', arg=4))",
             "2|3",
             "2|4",
         ]
         assert await graph.ainvoke(None, thread1) == [
             "0",
             "1",
-            "2|Command(send=Send(node='2', arg=3))",
-            "2|Command(send=Send(node='2', arg=4))",
+            "2|Command(goto=Send(node='2', arg=3))",
+            "2|Command(goto=Send(node='2', arg=4))",
             "2|3",
             "2|4",
             "3",
@@ -1801,15 +1801,15 @@ async def test_send_dedupe_on_resume(checkpointer_name: str) -> None:
                 if isinstance(state, list)
                 else ["|".join((self.name, str(state)))]
             )
-            if isinstance(state, GraphCommand):
+            if isinstance(state, Command):
                 return replace(state, update=update)
             else:
                 return update
 
     def send_for_fun(state):
         return [
-            Send("2", GraphCommand(send=Send("2", 3))),
-            Send("2", GraphCommand(send=Send("flaky", 4))),
+            Send("2", Command(goto=Send("2", 3))),
+            Send("2", Command(goto=Send("flaky", 4))),
             "3.1",
         ]
 
@@ -1832,8 +1832,8 @@ async def test_send_dedupe_on_resume(checkpointer_name: str) -> None:
         assert await graph.ainvoke(["0"], thread1, debug=1) == [
             "0",
             "1",
-            "2|Command(send=Send(node='2', arg=3))",
-            "2|Command(send=Send(node='flaky', arg=4))",
+            "2|Command(goto=Send(node='2', arg=3))",
+            "2|Command(goto=Send(node='flaky', arg=4))",
             "2|3",
         ]
         assert builder.nodes["2"].runnable.func.ticks == 3
@@ -1842,8 +1842,8 @@ async def test_send_dedupe_on_resume(checkpointer_name: str) -> None:
         assert await graph.ainvoke(None, thread1, debug=1) == [
             "0",
             "1",
-            "2|Command(send=Send(node='2', arg=3))",
-            "2|Command(send=Send(node='flaky', arg=4))",
+            "2|Command(goto=Send(node='2', arg=3))",
+            "2|Command(goto=Send(node='flaky', arg=4))",
             "2|3",
             "flaky|4",
             "3",
@@ -1860,8 +1860,8 @@ async def test_send_dedupe_on_resume(checkpointer_name: str) -> None:
                 values=[
                     "0",
                     "1",
-                    "2|Command(send=Send(node='2', arg=3))",
-                    "2|Command(send=Send(node='flaky', arg=4))",
+                    "2|Command(goto=Send(node='2', arg=3))",
+                    "2|Command(goto=Send(node='flaky', arg=4))",
                     "2|3",
                     "flaky|4",
                     "3",
@@ -1896,8 +1896,8 @@ async def test_send_dedupe_on_resume(checkpointer_name: str) -> None:
                 values=[
                     "0",
                     "1",
-                    "2|Command(send=Send(node='2', arg=3))",
-                    "2|Command(send=Send(node='flaky', arg=4))",
+                    "2|Command(goto=Send(node='2', arg=3))",
+                    "2|Command(goto=Send(node='flaky', arg=4))",
                     "2|3",
                     "flaky|4",
                 ],
@@ -1914,8 +1914,8 @@ async def test_send_dedupe_on_resume(checkpointer_name: str) -> None:
                     "writes": {
                         "1": ["1"],
                         "2": [
-                            ["2|Command(send=Send(node='2', arg=3))"],
-                            ["2|Command(send=Send(node='flaky', arg=4))"],
+                            ["2|Command(goto=Send(node='2', arg=3))"],
+                            ["2|Command(goto=Send(node='flaky', arg=4))"],
                             ["2|3"],
                         ],
                         "flaky": ["flaky|4"],
@@ -2000,7 +2000,7 @@ async def test_send_dedupe_on_resume(checkpointer_name: str) -> None:
                         error=None,
                         interrupts=(),
                         state=None,
-                        result=["2|Command(send=Send(node='2', arg=3))"],
+                        result=["2|Command(goto=Send(node='2', arg=3))"],
                     ),
                     PregelTask(
                         id=AnyStr(),
@@ -2014,7 +2014,7 @@ async def test_send_dedupe_on_resume(checkpointer_name: str) -> None:
                         error=None,
                         interrupts=(),
                         state=None,
-                        result=["2|Command(send=Send(node='flaky', arg=4))"],
+                        result=["2|Command(goto=Send(node='flaky', arg=4))"],
                     ),
                     PregelTask(
                         id=AnyStr(),
@@ -2572,9 +2572,9 @@ async def test_send_react_interrupt_control(
     )
 
     async def agent(state) -> Command[Literal["foo"]]:
-        return GraphCommand(
+        return Command(
             update={"messages": ai_message},
-            send=[Send(call["name"], call) for call in ai_message.tool_calls],
+            goto=[Send(call["name"], call) for call in ai_message.tool_calls],
         )
 
     foo_called = 0
@@ -2885,13 +2885,13 @@ async def test_max_concurrency(checkpointer_name: str) -> None:
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_max_concurrency_control(checkpointer_name: str) -> None:
-    async def node1(state) -> GraphCommand[Literal["2"]]:
-        return GraphCommand(update=["1"], send=[Send("2", idx) for idx in range(100)])
+    async def node1(state) -> Command[Literal["2"]]:
+        return Command(update=["1"], goto=[Send("2", idx) for idx in range(100)])
 
     node2_currently = 0
     node2_max_currently = 0
 
-    async def node2(state) -> GraphCommand[Literal["3"]]:
+    async def node2(state) -> Command[Literal["3"]]:
         nonlocal node2_currently, node2_max_currently
         node2_currently += 1
         if node2_currently > node2_max_currently:
@@ -2899,7 +2899,7 @@ async def test_max_concurrency_control(checkpointer_name: str) -> None:
         await asyncio.sleep(0.1)
         node2_currently -= 1
 
-        return GraphCommand(update=[state], goto="3")
+        return Command(update=[state], goto="3")
 
     async def node3(state) -> Literal["3"]:
         return ["3"]
@@ -10421,9 +10421,9 @@ async def test_parent_command(checkpointer_name: str) -> None:
     from langchain_core.tools import tool
 
     @tool(return_direct=True)
-    def get_user_name() -> GraphCommand:
+    def get_user_name() -> Command:
         """Retrieve user name"""
-        return GraphCommand(update={"user_name": "Meow"}, graph=GraphCommand.PARENT)
+        return Command(update={"user_name": "Meow"}, graph=Command.PARENT)
 
     subgraph_builder = StateGraph(MessagesState)
     subgraph_builder.add_node("tool", get_user_name)

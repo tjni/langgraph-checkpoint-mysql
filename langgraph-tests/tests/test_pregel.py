@@ -49,7 +49,7 @@ from langgraph.constants import (
     START,
 )
 from langgraph.errors import MultipleSubgraphsError, NodeInterrupt
-from langgraph.graph import END, Graph, GraphCommand, StateGraph
+from langgraph.graph import END, Graph, StateGraph
 from langgraph.graph.message import MessageGraph, MessagesState, add_messages
 from langgraph.managed.shared_value import SharedValue
 from langgraph.prebuilt.tool_node import ToolNode
@@ -1005,15 +1005,15 @@ def test_send_dedupe_on_resume(
                 if isinstance(state, list)
                 else ["|".join((self.name, str(state)))]
             )
-            if isinstance(state, GraphCommand):
+            if isinstance(state, Command):
                 return replace(state, update=update)
             else:
                 return update
 
     def send_for_fun(state):
         return [
-            Send("2", GraphCommand(send=Send("2", 3))),
-            Send("2", GraphCommand(send=Send("flaky", 4))),
+            Send("2", Command(goto=Send("2", 3))),
+            Send("2", Command(goto=Send("flaky", 4))),
             "3.1",
         ]
 
@@ -1035,8 +1035,8 @@ def test_send_dedupe_on_resume(
     assert graph.invoke(["0"], thread1, debug=1) == [
         "0",
         "1",
-        "2|Command(send=Send(node='2', arg=3))",
-        "2|Command(send=Send(node='flaky', arg=4))",
+        "2|Command(goto=Send(node='2', arg=3))",
+        "2|Command(goto=Send(node='flaky', arg=4))",
         "2|3",
     ]
     assert builder.nodes["2"].runnable.func.ticks == 3
@@ -1051,8 +1051,8 @@ def test_send_dedupe_on_resume(
     assert graph.invoke(None, thread1, debug=1) == [
         "0",
         "1",
-        "2|Command(send=Send(node='2', arg=3))",
-        "2|Command(send=Send(node='flaky', arg=4))",
+        "2|Command(goto=Send(node='2', arg=3))",
+        "2|Command(goto=Send(node='flaky', arg=4))",
         "2|3",
         "flaky|4",
         "3",
@@ -1074,8 +1074,8 @@ def test_send_dedupe_on_resume(
                 values=[
                     "0",
                     "1",
-                    "2|Command(send=Send(node='2', arg=3))",
-                    "2|Command(send=Send(node='flaky', arg=4))",
+                    "2|Command(goto=Send(node='2', arg=3))",
+                    "2|Command(goto=Send(node='flaky', arg=4))",
                     "2|3",
                     "flaky|4",
                     "3",
@@ -1110,8 +1110,8 @@ def test_send_dedupe_on_resume(
                 values=[
                     "0",
                     "1",
-                    "2|Command(send=Send(node='2', arg=3))",
-                    "2|Command(send=Send(node='flaky', arg=4))",
+                    "2|Command(goto=Send(node='2', arg=3))",
+                    "2|Command(goto=Send(node='flaky', arg=4))",
                     "2|3",
                     "flaky|4",
                 ],
@@ -1128,8 +1128,8 @@ def test_send_dedupe_on_resume(
                     "writes": {
                         "1": ["1"],
                         "2": [
-                            ["2|Command(send=Send(node='2', arg=3))"],
-                            ["2|Command(send=Send(node='flaky', arg=4))"],
+                            ["2|Command(goto=Send(node='2', arg=3))"],
+                            ["2|Command(goto=Send(node='flaky', arg=4))"],
                             ["2|3"],
                         ],
                         "flaky": ["flaky|4"],
@@ -1214,7 +1214,7 @@ def test_send_dedupe_on_resume(
                         error=None,
                         interrupts=(),
                         state=None,
-                        result=["2|Command(send=Send(node='2', arg=3))"],
+                        result=["2|Command(goto=Send(node='2', arg=3))"],
                     ),
                     PregelTask(
                         id=AnyStr(),
@@ -1228,7 +1228,7 @@ def test_send_dedupe_on_resume(
                         error=None,
                         interrupts=(),
                         state=None,
-                        result=["2|Command(send=Send(node='flaky', arg=4))"],
+                        result=["2|Command(goto=Send(node='flaky', arg=4))"],
                     ),
                     PregelTask(
                         id=AnyStr(),
@@ -1791,10 +1791,10 @@ def test_send_react_interrupt_control(
         tool_calls=[ToolCall(name="foo", args={"hi": [1, 2, 3]}, id=AnyStr())],
     )
 
-    def agent(state) -> GraphCommand[Literal["foo"]]:
-        return GraphCommand(
+    def agent(state) -> Command[Literal["foo"]]:
+        return Command(
             update={"messages": ai_message},
-            send=[Send(call["name"], call) for call in ai_message.tool_calls],
+            goto=[Send(call["name"], call) for call in ai_message.tool_calls],
         )
 
     foo_called = 0
@@ -11224,9 +11224,9 @@ def test_parent_command(request: pytest.FixtureRequest, checkpointer_name: str) 
     from langchain_core.tools import tool
 
     @tool(return_direct=True)
-    def get_user_name() -> GraphCommand:
+    def get_user_name() -> Command:
         """Retrieve user name"""
-        return GraphCommand(update={"user_name": "Meow"}, graph=GraphCommand.PARENT)
+        return Command(update={"user_name": "Meow"}, graph=Command.PARENT)
 
     subgraph_builder = StateGraph(MessagesState)
     subgraph_builder.add_node("tool", get_user_name)
