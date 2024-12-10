@@ -1209,4 +1209,4 @@ pymysql = ["pymysql"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9.0,<4.0"
-content-hash = "2849ae4e30c03ee8dee4eaf5721c53885dca1ac1fdc13cdebdc08c43c533c0db"
+content-hash = "a191feb5481ca86779107ca08b3fa3fa3366449a2f70219e95c3fd1779b9bc3f"
