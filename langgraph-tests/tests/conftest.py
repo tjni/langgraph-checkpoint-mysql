@@ -59,7 +59,7 @@ def checkpointer_pymysql():
         # drop unique db
         with pymysql.connect(**PyMySQLSaver.parse_conn_string(DEFAULT_MYSQL_URI), autocommit=True) as conn:
             with conn.cursor() as cursor:
-                cursor.execute(f"drop databASE {database}")
+                cursor.execute(f"DROP DATABASE {database}")
 
 
 @asynccontextmanager

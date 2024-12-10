@@ -11,7 +11,6 @@ from typing import (
     Protocol,
     TypeVar,
     Union,
-    cast,
 )
 
 from langchain_core.runnables import RunnableConfig
@@ -34,7 +33,7 @@ from langgraph.checkpoint.mysql.utils import (
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
 
-class DictCursor(Protocol):
+class DictCursor(ContextManager, Protocol):
     """
     Protocol that a cursor should implement.
 
@@ -54,7 +53,7 @@ class DictCursor(Protocol):
     def fetchall(self) -> Sequence[dict[str, Any]]: ...
 
 
-R = TypeVar("R", bound=ContextManager, covariant=True)  # cursor type
+R = TypeVar("R", bound=DictCursor)  # cursor type
 
 
 Conn = _internal.Conn  # For backward compatibility
@@ -72,10 +71,6 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
 
         self.conn = conn
         self.lock = threading.Lock()
-
-    @staticmethod
-    def _is_no_such_table_error(e: Exception) -> bool:
-        raise NotImplementedError
 
     @staticmethod
     def _get_cursor_from_connection(conn: _internal.C) -> R:
@@ -110,21 +105,14 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
         already exist and runs database migrations. It MUST be called directly by the user
         the first time checkpointer is used.
         """
-        with self._cursor() as cur_:
-            cur = cast(DictCursor, cur_)
-            try:
-                cur.execute(
-                    "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
-                )
-                row = cur.fetchone()
-                if row is None:
-                    version = -1
-                else:
-                    version = row["v"]
-            except Exception as e:
-                if not self._is_no_such_table_error(e):
-                    raise
+        with self._cursor() as cur:
+            cur.execute(self.MIGRATIONS[0])
+            cur.execute("SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1")
+            row = cur.fetchone()
+            if row is None:
                 version = -1
+            else:
+                version = row["v"]
             for v, migration in zip(
                 range(version + 1, len(self.MIGRATIONS)),
                 self.MIGRATIONS[version + 1 :],
@@ -177,8 +165,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
         if limit:
             query += f" LIMIT {limit}"
         # if we change this to use .stream() we need to make sure to close the cursor
-        with self._cursor() as cur_:
-            cur = cast(DictCursor, cur_)
+        with self._cursor() as cur:
             cur.execute(query, args)
             values = cur.fetchall()
             for value in values:
@@ -257,8 +244,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
             args = (thread_id, checkpoint_ns)
             where = "WHERE thread_id = %s AND checkpoint_ns = %s ORDER BY checkpoint_id DESC LIMIT 1"
 
-        with self._cursor() as cur_:
-            cur = cast(DictCursor, cur_)
+        with self._cursor() as cur:
             cur.execute(
                 self.SELECT_SQL + where,
                 args,
@@ -342,8 +328,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
             }
         }
 
-        with self._cursor(pipeline=True) as cur_:
-            cur = cast(DictCursor, cur_)
+        with self._cursor(pipeline=True) as cur:
             cur.executemany(
                 self.UPSERT_CHECKPOINT_BLOBS_SQL,
                 self._dump_blobs(
@@ -386,8 +371,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
             if all(w[0] in WRITES_IDX_MAP for w in writes)
             else self.INSERT_CHECKPOINT_WRITES_SQL
         )
-        with self._cursor(pipeline=True) as cur_:
-            cur = cast(DictCursor, cur_)
+        with self._cursor(pipeline=True) as cur:
             cur.executemany(
                 query,
                 self._dump_writes(
