@@ -8,10 +8,10 @@ import pymysql.constants.ER
 from pymysql.cursors import DictCursor
 from typing_extensions import Self, override
 
-from langgraph.checkpoint.mysql import BaseSyncMySQLSaver, _get_connection
+from langgraph.checkpoint.mysql import BaseSyncMySQLSaver
 from langgraph.checkpoint.mysql import Conn as BaseConn
 
-Conn = BaseConn[pymysql.Connection]
+Conn = BaseConn[pymysql.Connection]  # type: ignore
 
 
 class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
@@ -65,11 +65,9 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
         )
 
     @override
-    @contextmanager
-    def _cursor(self) -> Iterator[DictCursor]:
-        with _get_connection(self.conn) as conn:
-            with self.lock, conn.cursor(DictCursor) as cur:
-                yield cur
+    @staticmethod
+    def _get_cursor_from_connection(conn: pymysql.Connection) -> DictCursor:
+        return conn.cursor(DictCursor)
 
 
 __all__ = ["PyMySQLSaver", "Conn"]

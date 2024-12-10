@@ -1,7 +1,9 @@
 import asyncio
 import json
 import logging
+import threading
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import datetime
 from typing import (
     Any,
@@ -9,6 +11,7 @@ from typing import (
     ContextManager,
     Generic,
     Iterable,
+    Iterator,
     Mapping,
     Optional,
     Protocol,
@@ -21,6 +24,8 @@ from typing import (
 import orjson
 from typing_extensions import TypedDict
 
+from langgraph.checkpoint.mysql import _ainternal as _ainternal
+from langgraph.checkpoint.mysql import _internal as _internal
 from langgraph.store.base import (
     BaseStore,
     GetOp,
@@ -54,7 +59,7 @@ CREATE INDEX store_prefix_idx ON store (prefix) USING btree;
 ]
 
 
-class DictCursor(Protocol):
+class DictCursor(ContextManager, Protocol):
     """
     Protocol that a cursor should implement.
 
@@ -74,9 +79,8 @@ class DictCursor(Protocol):
     def fetchall(self) -> Sequence[dict[str, Any]]: ...
 
 
-C = TypeVar("C", covariant=True)  # connection type
-M = TypeVar("M", bound=ContextManager, covariant=True)  # connection type
-R = TypeVar("R", bound=ContextManager, covariant=True)  # cursor type
+C = TypeVar("C", bound=Union[_internal.Conn, _ainternal.Conn])  # connection type
+R = TypeVar("R", bound=DictCursor)  # cursor type
 
 
 class BaseMySQLStore(Generic[C]):
@@ -108,9 +112,14 @@ class BaseMySQLStore(Generic[C]):
         self,
         put_ops: Sequence[tuple[int, PutOp]],
     ) -> list[tuple[str, Sequence]]:
+        # Last-write wins
+        dedupped_ops: dict[tuple[tuple[str, ...], str], PutOp] = {}
+        for _, op in put_ops:
+            dedupped_ops[(op.namespace, op.key)] = op
+
         inserts: list[PutOp] = []
         deletes: list[PutOp] = []
-        for _, op in put_ops:
+        for op in dedupped_ops.values():
             if op.value is None:
                 deletes.append(op)
             else:
@@ -238,12 +247,14 @@ class BaseMySQLStore(Generic[C]):
         return queries
 
 
-class BaseSyncMySQLStore(BaseStore, BaseMySQLStore[M], Generic[M, R]):
-    __slots__ = ("_deserializer",)
+class BaseSyncMySQLStore(
+    BaseStore, BaseMySQLStore[_internal.Conn[_internal.C]], Generic[_internal.C, R]
+):
+    __slots__ = ("_deserializer", "lock")
 
     def __init__(
         self,
-        conn: M,
+        conn: _internal.Conn[_internal.C],
         *,
         deserializer: Optional[
             Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]
@@ -252,58 +263,81 @@ class BaseSyncMySQLStore(BaseStore, BaseMySQLStore[M], Generic[M, R]):
         super().__init__()
         self._deserializer = deserializer
         self.conn = conn
+        self.lock = threading.Lock()
 
     @staticmethod
     def _is_no_such_table_error(e: Exception) -> bool:
         raise NotImplementedError
 
-    def _cursor(self) -> R:
+    @staticmethod
+    def _get_cursor_from_connection(conn: _internal.C) -> R:
         raise NotImplementedError
+
+    @contextmanager
+    def _cursor(self, *, pipeline: bool = False) -> Iterator[R]:
+        """Create a database cursor as a context manager.
+
+        Args:
+            pipeline (bool): whether to use transaction context manager and handle concurrency
+        """
+        with _internal.get_connection(self.conn) as conn:
+            if pipeline:
+                # a connection can only be used by one
+                # thread/coroutine at a time, so we acquire a lock
+                with self.lock:
+                    conn.begin()
+                    try:
+                        with self._get_cursor_from_connection(conn) as cur:
+                            yield cur
+                        conn.commit()
+                    except:
+                        conn.rollback()
+                        raise
+            else:
+                with self._get_cursor_from_connection(conn) as cur:
+                    yield cur
 
     def batch(self, ops: Iterable[Op]) -> list[Result]:
         grouped_ops, num_ops = _group_ops(ops)
         results: list[Result] = [None] * num_ops
 
-        if GetOp in grouped_ops:
-            self._batch_get_ops(
-                cast(Sequence[tuple[int, GetOp]], grouped_ops[GetOp]), results
-            )
+        with self._cursor(pipeline=True) as cur:
+            if GetOp in grouped_ops:
+                self._batch_get_ops(
+                    cast(Sequence[tuple[int, GetOp]], grouped_ops[GetOp]), results, cur
+                )
 
-        if PutOp in grouped_ops:
-            self._batch_put_ops(cast(Sequence[tuple[int, PutOp]], grouped_ops[PutOp]))
+            if SearchOp in grouped_ops:
+                self._batch_search_ops(
+                    cast(Sequence[tuple[int, SearchOp]], grouped_ops[SearchOp]),
+                    results,
+                    cur,
+                )
 
-        if SearchOp in grouped_ops:
-            self._batch_search_ops(
-                cast(Sequence[tuple[int, SearchOp]], grouped_ops[SearchOp]),
-                results,
-            )
-
-        if ListNamespacesOp in grouped_ops:
-            self._batch_list_namespaces_ops(
-                cast(
-                    Sequence[tuple[int, ListNamespacesOp]],
-                    grouped_ops[ListNamespacesOp],
-                ),
-                results,
-            )
+            if ListNamespacesOp in grouped_ops:
+                self._batch_list_namespaces_ops(
+                    cast(
+                        Sequence[tuple[int, ListNamespacesOp]],
+                        grouped_ops[ListNamespacesOp],
+                    ),
+                    results,
+                    cur,
+                )
+            if PutOp in grouped_ops:
+                self._batch_put_ops(
+                    cast(Sequence[tuple[int, PutOp]], grouped_ops[PutOp]), cur
+                )
 
         return results
-
-    async def abatch(self, ops: Iterable[Op]) -> list[Result]:
-        return await asyncio.get_running_loop().run_in_executor(None, self.batch, ops)
 
     def _batch_get_ops(
         self,
         get_ops: Sequence[tuple[int, GetOp]],
         results: list[Result],
+        cur: R,
     ) -> None:
-        cursors = []
         for query, params, namespace, items in self._get_batch_GET_ops_queries(get_ops):
-            cur = cast(DictCursor, self._cursor())
             cur.execute(query, params)
-            cursors.append((cur, namespace, items))
-
-        for cur, namespace, items in cursors:
             rows = cast(list[Row], cur.fetchall())
             key_to_row = {row["key"]: row for row in rows}
             for idx, key in items:
@@ -318,51 +352,45 @@ class BaseSyncMySQLStore(BaseStore, BaseMySQLStore[M], Generic[M, R]):
     def _batch_put_ops(
         self,
         put_ops: Sequence[tuple[int, PutOp]],
+        cur: R,
     ) -> None:
         queries = self._get_batch_PUT_queries(put_ops)
         for query, params in queries:
-            cur = cast(DictCursor, self._cursor())
             cur.execute(query, params)
 
     def _batch_search_ops(
         self,
         search_ops: Sequence[tuple[int, SearchOp]],
         results: list[Result],
+        cur: R,
     ) -> None:
-        queries = self._get_batch_search_queries(search_ops)
-        cursors: list[tuple[DictCursor, int]] = []
-
-        for (query, params), (idx, _) in zip(queries, search_ops):
-            cur = cast(DictCursor, self._cursor())
+        for (query, params), (idx, _) in zip(
+            self._get_batch_search_queries(search_ops), search_ops
+        ):
             cur.execute(query, params)
-            cursors.append((cur, idx))
-
-        for cur, idx in cursors:
             rows = cast(list[Row], cur.fetchall())
-            items = [
+            results[idx] = [
                 _row_to_item(
                     _decode_ns_bytes(row["prefix"]), row, loader=self._deserializer
                 )
                 for row in rows
             ]
-            results[idx] = items
 
     def _batch_list_namespaces_ops(
         self,
         list_ops: Sequence[tuple[int, ListNamespacesOp]],
         results: list[Result],
+        cur: R,
     ) -> None:
-        queries = self._get_batch_list_namespaces_queries(list_ops)
-        cursors: list[tuple[DictCursor, int]] = []
-        for (query, params), (idx, _) in zip(queries, list_ops):
-            cur = cast(DictCursor, self._cursor())
+        for (query, params), (idx, _) in zip(
+            self._get_batch_list_namespaces_queries(list_ops), list_ops
+        ):
             cur.execute(query, params)
-            cursors.append((cur, idx))
-
-        for cur, idx in cursors:
             rows = cast(list[dict], cur.fetchall())
-            namespaces = [_decode_ns_bytes(row["truncated_prefix"]) for row in rows]
-            results[idx] = namespaces
+            results[idx] = [_decode_ns_bytes(row["truncated_prefix"]) for row in rows]
+
+    async def abatch(self, ops: Iterable[Op]) -> list[Result]:
+        return await asyncio.get_running_loop().run_in_executor(None, self.batch, ops)
 
     def setup(self) -> None:
         """Set up the store database.
@@ -371,11 +399,10 @@ class BaseSyncMySQLStore(BaseStore, BaseMySQLStore[M], Generic[M, R]):
         already exist and runs database migrations. It MUST be called directly by the user
         the first time the store is used.
         """
-        with self._cursor() as cur_:
-            cur = cast(DictCursor, cur_)
+        with self._cursor() as cur:
             try:
                 cur.execute("SELECT v FROM store_migrations ORDER BY v DESC LIMIT 1")
-                row = cast(dict, cur.fetchone())
+                row = cur.fetchone()
                 if row is None:
                     version = -1
                 else:

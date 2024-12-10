@@ -6,7 +6,8 @@ import pymysql
 import pymysql.constants.ER
 import pytest
 
-DEFAULT_URI = "mysql://mysql:mysql@localhost:5441/mysql"
+DEFAULT_BASE_URI = "mysql://mysql:mysql@localhost:5441/"
+DEFAULT_URI = DEFAULT_BASE_URI + "mysql"
 
 
 @pytest.fixture(scope="function")
@@ -30,6 +31,13 @@ async def clear_test_db(conn: aiomysql.Connection) -> None:
             await cursor.execute("DELETE FROM checkpoints")
             await cursor.execute("DELETE FROM checkpoint_blobs")
             await cursor.execute("DELETE FROM checkpoint_writes")
+    except pymysql.ProgrammingError as e:
+        if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
+            raise
+
+    try:
+        async with conn.cursor() as cursor:
+            await cursor.execute("DELETE FROM store")
     except pymysql.ProgrammingError as e:
         if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
             raise
