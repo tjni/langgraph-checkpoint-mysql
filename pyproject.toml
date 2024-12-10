@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "langgraph-checkpoint-mysql"
-version = "2.0.4"
+version = "2.0.5"
 description = "Library with a MySQL implementation of LangGraph checkpoint saver."
 authors = ["Theodore Ni <dev@ted.bio>"]
 license = "MIT"
