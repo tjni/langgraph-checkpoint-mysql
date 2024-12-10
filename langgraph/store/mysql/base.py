@@ -34,6 +34,7 @@ from langgraph.store.base import (
     Op,
     PutOp,
     Result,
+    SearchItem,
     SearchOp,
 )
 
@@ -370,7 +371,7 @@ class BaseSyncMySQLStore(
             cur.execute(query, params)
             rows = cast(list[Row], cur.fetchall())
             results[idx] = [
-                _row_to_item(
+                _row_to_search_item(
                     _decode_ns_bytes(row["prefix"]), row, loader=self._deserializer
                 )
                 for row in rows
@@ -460,6 +461,32 @@ def _row_to_item(
         namespace=namespace,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _row_to_search_item(
+    namespace: tuple[str, ...],
+    row: Row,
+    *,
+    loader: Optional[Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]] = None,
+) -> SearchItem:
+    """Convert a row from the database into an Item."""
+    loader = loader or _json_loads
+    val = row["value"]
+    score = row.get("score")
+    if score is not None:
+        try:
+            score = float(score)  # type: ignore[arg-type]
+        except ValueError:
+            logger.warning("Invalid score: %s", score)
+            score = None
+    return SearchItem(
+        value=val if isinstance(val, dict) else loader(val),
+        key=row["key"],
+        namespace=namespace,
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        score=score,
     )
 
 
