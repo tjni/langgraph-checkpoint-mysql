@@ -3,6 +3,7 @@ import json
 import logging
 import threading
 from collections import defaultdict
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from typing import (
@@ -10,12 +11,9 @@ from typing import (
     Callable,
     ContextManager,
     Generic,
-    Iterable,
-    Iterator,
     Mapping,
     Optional,
     Protocol,
-    Sequence,
     TypeVar,
     Union,
     cast,
@@ -41,7 +39,7 @@ from langgraph.store.base import (
 logger = logging.getLogger(__name__)
 
 
-MIGRATIONS = [
+MIGRATIONS: Sequence[str] = [
     """
 CREATE TABLE IF NOT EXISTS store (
     -- 'prefix' represents the doc's 'namespace'
@@ -109,7 +107,7 @@ class BaseMySQLStore(Generic[C]):
             results.append((query, params, namespace, items))
         return results
 
-    def _get_batch_PUT_queries(
+    def _prepare_batch_PUT_queries(
         self,
         put_ops: Sequence[tuple[int, PutOp]],
     ) -> list[tuple[str, Sequence]]:
@@ -162,40 +160,47 @@ class BaseMySQLStore(Generic[C]):
 
         return queries
 
-    def _get_batch_search_queries(
+    def _prepare_batch_search_queries(
         self,
         search_ops: Sequence[tuple[int, SearchOp]],
     ) -> list[tuple[str, Sequence]]:
         queries: list[tuple[str, Sequence]] = []
         for _, op in search_ops:
-            query = """
+            # Build filter conditions first
+            filter_params = []
+            filter_conditions = []
+            if op.filter:
+                for key, value in op.filter.items():
+                    if isinstance(value, dict):
+                        for op_name, val in value.items():
+                            condition, filter_params_ = self._get_filter_condition(
+                                key, op_name, val
+                            )
+                            filter_conditions.append(condition)
+                            filter_params.extend(filter_params_)
+                    else:
+                        filter_conditions.append(
+                            "json_extract(value, concat('$.', %s)) = CAST(%s AS JSON)"
+                        )
+                        filter_params.extend([key, json.dumps(value)])
+
+            base_query = """
                 SELECT prefix, `key`, value, created_at, updated_at
                 FROM store
                 WHERE prefix LIKE %s
             """
             params: list = [f"{_namespace_to_text(op.namespace_prefix)}%"]
 
-            if op.filter:
-                filter_conditions = []
-                for key, value in op.filter.items():
-                    if isinstance(value, list):
-                        filter_conditions.append(
-                            "json_contains(json_extract(value, concat('$.', %s)), %s)"
-                        )
-                        params.extend([key, json.dumps(value)])
-                    else:
-                        filter_conditions.append(
-                            "json_extract(value, concat('$.', %s)) = CAST(%s AS JSON)"
-                        )
-                        params.extend([key, json.dumps(value)])
-                query += " AND " + " AND ".join(filter_conditions)
+            if filter_conditions:
+                params.extend(filter_params)
+                base_query += " AND " + " AND ".join(filter_conditions)
 
-            # Note: we will need to not do this if sim/keyword search
-            # is used
-            query += " ORDER BY updated_at DESC LIMIT %s OFFSET %s"
+            base_query += " ORDER BY updated_at DESC"
+            base_query += " LIMIT %s OFFSET %s"
             params.extend([op.limit, op.offset])
 
-            queries.append((query, params))
+            queries.append((base_query, params))
+
         return queries
 
     def _get_batch_list_namespaces_queries(
@@ -243,9 +248,44 @@ class BaseMySQLStore(Generic[C]):
             query += " GROUP BY truncated_prefix"
             query += " ORDER BY truncated_prefix LIMIT %s OFFSET %s"
             params.extend([op.limit, op.offset])
-            queries.append((query, params))
+            queries.append((query, tuple(params)))
 
         return queries
+
+    def _get_filter_condition(self, key: str, op: str, value: Any) -> tuple[str, list]:
+        """Helper to generate filter conditions."""
+        if op == "$eq":
+            return "json_extract(value, concat('$.', %s)) = CAST(%s AS JSON)", [
+                key,
+                json.dumps(value),
+            ]
+        elif op == "$gt":
+            return "CAST(json_extract(value, concat('$.', %s)) AS CHAR) > %s", [
+                key,
+                str(value),
+            ]
+        elif op == "$gte":
+            return "CAST(json_extract(value, concat('$.', %s)) AS CHAR) >= %s", [
+                key,
+                str(value),
+            ]
+        elif op == "$lt":
+            return "CAST(json_extract(value, concat('$.', %s)) AS CHAR) < %s", [
+                key,
+                str(value),
+            ]
+        elif op == "$lte":
+            return "CAST(json_extract(value, concat('$.', %s)) AS CHAR) <= %s", [
+                key,
+                str(value),
+            ]
+        elif op == "$ne":
+            return "json_extract(value, concat('$.', %s)) != CAST(%s AS JSON)", [
+                key,
+                json.dumps(value),
+            ]
+        else:
+            raise ValueError(f"Unsupported operator: {op}")
 
 
 class BaseSyncMySQLStore(
@@ -355,7 +395,7 @@ class BaseSyncMySQLStore(
         put_ops: Sequence[tuple[int, PutOp]],
         cur: R,
     ) -> None:
-        queries = self._get_batch_PUT_queries(put_ops)
+        queries = self._prepare_batch_PUT_queries(put_ops)
         for query, params in queries:
             cur.execute(query, params)
 
@@ -366,7 +406,7 @@ class BaseSyncMySQLStore(
         cur: R,
     ) -> None:
         for (query, params), (idx, _) in zip(
-            self._get_batch_search_queries(search_ops), search_ops
+            self._prepare_batch_search_queries(search_ops), search_ops
         ):
             cur.execute(query, params)
             rows = cast(list[Row], cur.fetchall())

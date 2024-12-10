@@ -62,7 +62,7 @@ lint.select = [
 ]
 lint.ignore = ["E501", "B008", "UP007", "UP006"]
 exclude = [
-  "tests/langgraph"
+  "langgraph-tests"
 ]
 
 [tool.mypy]
@@ -75,5 +75,5 @@ warn_redundant_casts = "True"
 allow_redefinition = "True"
 disable_error_code = "typeddict-item, return-value"
 exclude = [
-  "tests/langgraph"
+  "langgraph-tests"
 ]

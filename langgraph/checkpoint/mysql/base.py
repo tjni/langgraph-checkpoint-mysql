@@ -1,6 +1,7 @@
 import json
 import random
-from typing import Any, List, Optional, Sequence, Tuple, cast
+from collections.abc import Sequence
+from typing import Any, Optional, cast
 
 from langchain_core.runnables import RunnableConfig
 
@@ -254,7 +255,7 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
         config: Optional[RunnableConfig],
         filter: MetadataInput,
         before: Optional[RunnableConfig] = None,
-    ) -> Tuple[str, List[Any]]:
+    ) -> tuple[str, list[Any]]:
         """Return WHERE clause predicates for alist() given config, filter, before.
 
         This method returns a tuple of a string and a tuple of values. The string

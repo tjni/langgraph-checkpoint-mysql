@@ -1,7 +1,8 @@
 """Shared async utility functions for the MySQL checkpoint & storage classes."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Union
+from typing import Union
 
 import aiomysql  # type: ignore
 import pymysql.connections

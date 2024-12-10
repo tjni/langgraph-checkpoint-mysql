@@ -1,17 +1,9 @@
 import asyncio
 import logging
 import urllib.parse
+from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import asynccontextmanager
-from typing import (
-    Any,
-    AsyncIterator,
-    Callable,
-    Iterable,
-    Optional,
-    Sequence,
-    Union,
-    cast,
-)
+from typing import Any, Callable, Optional, Union, cast
 
 import aiomysql  # type: ignore
 import orjson
@@ -19,7 +11,14 @@ import pymysql
 import pymysql.constants.ER
 
 from langgraph.checkpoint.mysql import _ainternal
-from langgraph.store.base import GetOp, ListNamespacesOp, Op, PutOp, Result, SearchOp
+from langgraph.store.base import (
+    GetOp,
+    ListNamespacesOp,
+    Op,
+    PutOp,
+    Result,
+    SearchOp,
+)
 from langgraph.store.base.batch import AsyncBatchedBaseStore
 from langgraph.store.mysql.base import (
     BaseMySQLStore,
@@ -58,6 +57,91 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[_ainternal.Conn]):
             await self._execute_batch(grouped_ops, results, conn)
 
         return results
+
+    def batch(self, ops: Iterable[Op]) -> list[Result]:
+        return asyncio.run_coroutine_threadsafe(self.abatch(ops), self.loop).result()
+
+    @staticmethod
+    def parse_conn_string(conn_string: str) -> dict[str, Any]:
+        parsed = urllib.parse.urlparse(conn_string)
+
+        # In order to provide additional params via the connection string,
+        # we convert the parsed.query to a dict so we can access the values.
+        # This is necessary when using a unix socket, for example.
+        params_as_dict = dict(urllib.parse.parse_qsl(parsed.query))
+
+        return {
+            "host": parsed.hostname or "localhost",
+            "user": parsed.username,
+            "password": parsed.password or "",
+            "db": parsed.path[1:] or None,
+            "port": parsed.port or 3306,
+            "unix_socket": params_as_dict.get("unix_socket"),
+        }
+
+    @classmethod
+    @asynccontextmanager
+    async def from_conn_string(
+        cls,
+        conn_string: str,
+    ) -> AsyncIterator["AIOMySQLStore"]:
+        """Create a new AIOMySQLStore instance from a connection string.
+
+        Args:
+            conn_string (str): The MySQL connection info string.
+
+        Returns:
+            AIOMySQLStore: A new AIOMySQLStore instance.
+        """
+        async with aiomysql.connect(
+            **cls.parse_conn_string(conn_string),
+            autocommit=True,
+        ) as conn:
+            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
+            # is merged into aiomysql.
+            await conn.set_charset(pymysql.connections.DEFAULT_CHARSET)
+
+            yield cls(conn=conn)
+
+    async def setup(self) -> None:
+        """Set up the store database asynchronously.
+
+        This method creates the necessary tables in the Postgres database if they don't
+        already exist and runs database migrations. It MUST be called directly by the user
+        the first time the store is used.
+        """
+
+        async def _get_version(cur: aiomysql.DictCursor, table: str) -> int:
+            try:
+                await cur.execute(f"SELECT v FROM {table} ORDER BY v DESC LIMIT 1")
+                row = await cur.fetchone()
+                if row is None:
+                    version = -1
+                else:
+                    version = row["v"]
+            except pymysql.ProgrammingError as e:
+                if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
+                    raise
+                version = -1
+                await cur.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {table} (
+                        v INTEGER PRIMARY KEY
+                    )
+                """
+                )
+            return version
+
+        async with _ainternal.get_connection(self.conn) as conn:
+            async with self._cursor(conn) as cur:
+                version = await _get_version(cur, table="store_migrations")
+                for v, sql in enumerate(
+                    self.MIGRATIONS[version + 1 :], start=version + 1
+                ):
+                    await cur.execute(sql)
+                    await cur.execute(
+                        "INSERT INTO store_migrations (v) VALUES (%s)", (v,)
+                    )
 
     async def _execute_batch(
         self,
@@ -120,7 +204,7 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[_ainternal.Conn]):
         put_ops: Sequence[tuple[int, PutOp]],
         cur: aiomysql.DictCursor,
     ) -> None:
-        queries = self._get_batch_PUT_queries(put_ops)
+        queries = self._prepare_batch_PUT_queries(put_ops)
         for query, params in queries:
             await cur.execute(query, params)
 
@@ -130,8 +214,8 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[_ainternal.Conn]):
         results: list[Result],
         cur: aiomysql.DictCursor,
     ) -> None:
-        queries = self._get_batch_search_queries(search_ops)
-        for (query, params), (idx, _) in zip(queries, search_ops):
+        queries = self._prepare_batch_search_queries(search_ops)
+        for (idx, _), (query, params) in zip(search_ops, queries):
             await cur.execute(query, params)
             rows = cast(list[Row], await cur.fetchall())
             items = [
@@ -179,86 +263,3 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[_ainternal.Conn]):
         else:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 yield cur
-
-    def batch(self, ops: Iterable[Op]) -> list[Result]:
-        return asyncio.run_coroutine_threadsafe(self.abatch(ops), self.loop).result()
-
-    @staticmethod
-    def parse_conn_string(conn_string: str) -> dict[str, Any]:
-        parsed = urllib.parse.urlparse(conn_string)
-
-        # In order to provide additional params via the connection string,
-        # we convert the parsed.query to a dict so we can access the values.
-        # This is necessary when using a unix socket, for example.
-        params_as_dict = dict(urllib.parse.parse_qsl(parsed.query))
-
-        return {
-            "host": parsed.hostname or "localhost",
-            "user": parsed.username,
-            "password": parsed.password or "",
-            "db": parsed.path[1:] or None,
-            "port": parsed.port or 3306,
-            "unix_socket": params_as_dict.get("unix_socket"),
-        }
-
-    @classmethod
-    @asynccontextmanager
-    async def from_conn_string(
-        cls,
-        conn_string: str,
-    ) -> AsyncIterator["AIOMySQLStore"]:
-        """Create a new AIOMySQLStore instance from a connection string.
-
-        Args:
-            conn_string (str): The MySQL connection info string.
-
-        Returns:
-            AIOMySQLStore: A new AIOMySQLStore instance.
-        """
-        async with aiomysql.connect(
-            **cls.parse_conn_string(conn_string),
-            autocommit=True,
-        ) as conn:
-            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
-            # is merged into aiomysql.
-            await conn.set_charset(pymysql.connections.DEFAULT_CHARSET)
-
-            yield cls(conn=conn)
-
-    async def setup(self) -> None:
-        """Set up the store database asynchronously.
-
-        This method creates the necessary tables in the Postgres database if they don't
-        already exist and runs database migrations. It MUST be called directly by the user
-        the first time the store is used.
-        """
-        async with _ainternal.get_connection(self.conn) as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                try:
-                    await cur.execute(
-                        "SELECT v FROM store_migrations ORDER BY v DESC LIMIT 1"
-                    )
-                    row = cast(dict, await cur.fetchone())
-                    if row is None:
-                        version = -1
-                    else:
-                        version = row["v"]
-                except pymysql.ProgrammingError as e:
-                    if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
-                        raise
-                    version = -1
-                    # Create store_migrations table if it doesn't exist
-                    await cur.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS store_migrations (
-                            v INTEGER PRIMARY KEY
-                        )
-                        """
-                    )
-                for v, migration in enumerate(
-                    self.MIGRATIONS[version + 1 :], start=version + 1
-                ):
-                    await cur.execute(migration)
-                    await cur.execute(
-                        "INSERT INTO store_migrations (v) VALUES (%s)", (v,)
-                    )

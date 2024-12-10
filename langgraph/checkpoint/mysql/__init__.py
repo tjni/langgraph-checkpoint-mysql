@@ -1,15 +1,14 @@
 import json
 import threading
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import (
     Any,
     ContextManager,
     Generic,
-    Iterator,
     Mapping,
     Optional,
     Protocol,
-    Sequence,
     TypeVar,
     Union,
     cast,

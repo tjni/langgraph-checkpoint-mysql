@@ -1,10 +1,10 @@
 # type: ignore
+
 import time
 from uuid import uuid4
 
 import pymysql
 import pytest
-from conftest import DEFAULT_BASE_URI, DEFAULT_URI  # type: ignore
 
 from langgraph.store.base import (
     GetOp,
@@ -15,6 +15,7 @@ from langgraph.store.base import (
     SearchOp,
 )
 from langgraph.store.mysql import PyMySQLStore
+from tests.conftest import DEFAULT_BASE_URI, DEFAULT_URI
 
 
 @pytest.fixture(scope="function", params=["default"])

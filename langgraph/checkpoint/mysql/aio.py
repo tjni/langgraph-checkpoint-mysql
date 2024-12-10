@@ -1,8 +1,9 @@
 import asyncio
 import json
 import urllib.parse
+from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Iterator, Optional, Sequence
+from typing import Any, Optional
 
 import aiomysql  # type: ignore
 import pymysql
