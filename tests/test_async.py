@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 from uuid import uuid4
@@ -19,7 +20,7 @@ from tests.conftest import DEFAULT_BASE_URI
 
 
 @asynccontextmanager
-async def _pool_saver():
+async def _pool_saver() -> AsyncIterator[AIOMySQLSaver]:
     """Fixture for pool mode testing."""
     database = f"test_{uuid4().hex[:16]}"
     # create unique db
@@ -49,7 +50,7 @@ async def _pool_saver():
 
 
 @asynccontextmanager
-async def _base_saver():
+async def _base_saver() -> AsyncIterator[AIOMySQLSaver]:
     """Fixture for regular connection mode testing."""
     database = f"test_{uuid4().hex[:16]}"
     # create unique db
@@ -75,7 +76,7 @@ async def _base_saver():
 
 
 @asynccontextmanager
-async def _saver(name: str):
+async def _saver(name: str) -> AsyncIterator[AIOMySQLSaver]:
     if name == "base":
         async with _base_saver() as saver:
             yield saver
@@ -85,7 +86,7 @@ async def _saver(name: str):
 
 
 @pytest.fixture
-def test_data():
+def test_data() -> dict[str, Any]:
     """Fixture providing test data for checkpoint tests."""
     config_1: RunnableConfig = {
         "configurable": {
@@ -136,7 +137,7 @@ def test_data():
 
 
 @pytest.mark.parametrize("saver_name", ["base", "pool"])
-async def test_asearch(request, saver_name: str, test_data) -> None:
+async def test_asearch(saver_name: str, test_data: dict[str, Any]) -> None:
     async with _saver(saver_name) as saver:
         configs = test_data["configs"]
         checkpoints = test_data["checkpoints"]
@@ -181,7 +182,7 @@ async def test_asearch(request, saver_name: str, test_data) -> None:
 
 
 @pytest.mark.parametrize("saver_name", ["base", "pool"])
-async def test_null_chars(request, saver_name: str, test_data) -> None:
+async def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
     async with _saver(saver_name) as saver:
         config = await saver.aput(
             test_data["configs"][0],
@@ -197,7 +198,7 @@ async def test_null_chars(request, saver_name: str, test_data) -> None:
 
 @pytest.mark.parametrize("saver_name", ["base", "pool"])
 async def test_write_and_read_pending_writes_and_sends(
-    request, saver_name: str, test_data
+    saver_name: str, test_data: dict[str, Any]
 ) -> None:
     async with _saver(saver_name) as saver:
         config: RunnableConfig = {
@@ -233,7 +234,7 @@ async def test_write_and_read_pending_writes_and_sends(
     ],
 )
 async def test_write_and_read_channel_values(
-    request, saver_name: str, channel_values: dict[str, Any]
+    saver_name: str, channel_values: dict[str, Any]
 ) -> None:
     async with _saver(saver_name) as saver:
         config: RunnableConfig = {
@@ -260,7 +261,7 @@ async def test_write_and_read_channel_values(
 
 
 @pytest.mark.parametrize("saver_name", ["base", "pool"])
-async def test_write_and_read_pending_writes(request, saver_name: str) -> None:
+async def test_write_and_read_pending_writes(saver_name: str) -> None:
     async with _saver(saver_name) as saver:
         config: RunnableConfig = {
             "configurable": {
