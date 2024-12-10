@@ -58,14 +58,6 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
 
     @override
     @staticmethod
-    def _is_no_such_table_error(e: Exception) -> bool:
-        return (
-            isinstance(e, pymysql.ProgrammingError)
-            and e.args[0] == pymysql.constants.ER.NO_SUCH_TABLE
-        )
-
-    @override
-    @staticmethod
     def _get_cursor_from_connection(conn: pymysql.Connection) -> DictCursor:
         return conn.cursor(DictCursor)
 

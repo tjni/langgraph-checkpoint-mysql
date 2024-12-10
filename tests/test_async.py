@@ -1,5 +1,8 @@
+from contextlib import asynccontextmanager
 from typing import Any
+from uuid import uuid4
 
+import aiomysql  # type: ignore
 import pytest
 from langchain_core.runnables import RunnableConfig
 
@@ -12,191 +15,276 @@ from langgraph.checkpoint.base import (
 )
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
-from tests.conftest import DEFAULT_URI
+from tests.conftest import DEFAULT_BASE_URI
 
 
-class TestAIOMySQLSaver:
-    @pytest.fixture(autouse=True)
-    async def setup(self) -> None:
-        # objects for test setup
-        self.config_1: RunnableConfig = {
-            "configurable": {
-                "thread_id": "thread-1",
-                # for backwards compatibility testing
-                "thread_ts": "1",
-                "checkpoint_ns": "",
-            }
-        }
-        self.config_2: RunnableConfig = {
-            "configurable": {
-                "thread_id": "thread-2",
-                "checkpoint_id": "2",
-                "checkpoint_ns": "",
-            }
-        }
-        self.config_3: RunnableConfig = {
-            "configurable": {
-                "thread_id": "thread-2",
-                "checkpoint_id": "2-inner",
-                "checkpoint_ns": "inner",
-            }
-        }
+@asynccontextmanager
+async def _pool_saver():
+    """Fixture for pool mode testing."""
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    async with await aiomysql.connect(
+        **AIOMySQLSaver.parse_conn_string(DEFAULT_BASE_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        # yield checkpointer
+        async with aiomysql.create_pool(
+            **AIOMySQLSaver.parse_conn_string(DEFAULT_BASE_URI + database),
+            maxsize=10,
+            autocommit=True,
+        ) as pool:
+            checkpointer = AIOMySQLSaver(pool)
+            await checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        async with await aiomysql.connect(
+            **AIOMySQLSaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
 
-        self.chkpnt_1: Checkpoint = empty_checkpoint()
-        self.chkpnt_2: Checkpoint = create_checkpoint(self.chkpnt_1, {}, 1)
-        self.chkpnt_3: Checkpoint = empty_checkpoint()
 
-        self.metadata_1: CheckpointMetadata = {
-            "source": "input",
-            "step": 2,
-            "writes": {},
-            "score": 1,
+@asynccontextmanager
+async def _base_saver():
+    """Fixture for regular connection mode testing."""
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    async with await aiomysql.connect(
+        **AIOMySQLSaver.parse_conn_string(DEFAULT_BASE_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        async with AIOMySQLSaver.from_conn_string(
+            DEFAULT_BASE_URI + database
+        ) as checkpointer:
+            await checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        async with await aiomysql.connect(
+            **AIOMySQLSaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
+async def _saver(name: str):
+    if name == "base":
+        async with _base_saver() as saver:
+            yield saver
+    elif name == "pool":
+        async with _pool_saver() as saver:
+            yield saver
+
+
+@pytest.fixture
+def test_data():
+    """Fixture providing test data for checkpoint tests."""
+    config_1: RunnableConfig = {
+        "configurable": {
+            "thread_id": "thread-1",
+            # for backwards compatibility testing
+            "thread_ts": "1",
+            "checkpoint_ns": "",
         }
-        self.metadata_2: CheckpointMetadata = {
-            "source": "loop",
+    }
+    config_2: RunnableConfig = {
+        "configurable": {
+            "thread_id": "thread-2",
+            "checkpoint_id": "2",
+            "checkpoint_ns": "",
+        }
+    }
+    config_3: RunnableConfig = {
+        "configurable": {
+            "thread_id": "thread-2",
+            "checkpoint_id": "2-inner",
+            "checkpoint_ns": "inner",
+        }
+    }
+
+    chkpnt_1: Checkpoint = empty_checkpoint()
+    chkpnt_2: Checkpoint = create_checkpoint(chkpnt_1, {}, 1)
+    chkpnt_3: Checkpoint = empty_checkpoint()
+
+    metadata_1: CheckpointMetadata = {
+        "source": "input",
+        "step": 2,
+        "writes": {},
+        "score": 1,
+    }
+    metadata_2: CheckpointMetadata = {
+        "source": "loop",
+        "step": 1,
+        "writes": {"foo": "bar"},
+        "score": None,
+    }
+    metadata_3: CheckpointMetadata = {}
+
+    return {
+        "configs": [config_1, config_2, config_3],
+        "checkpoints": [chkpnt_1, chkpnt_2, chkpnt_3],
+        "metadata": [metadata_1, metadata_2, metadata_3],
+    }
+
+
+@pytest.mark.parametrize("saver_name", ["base", "pool"])
+async def test_asearch(request, saver_name: str, test_data) -> None:
+    async with _saver(saver_name) as saver:
+        configs = test_data["configs"]
+        checkpoints = test_data["checkpoints"]
+        metadata = test_data["metadata"]
+
+        await saver.aput(configs[0], checkpoints[0], metadata[0], {})
+        await saver.aput(configs[1], checkpoints[1], metadata[1], {})
+        await saver.aput(configs[2], checkpoints[2], metadata[2], {})
+
+        # call method / assertions
+        query_1 = {"source": "input"}  # search by 1 key
+        query_2 = {
             "step": 1,
             "writes": {"foo": "bar"},
-            "score": None,
+        }  # search by multiple keys
+        query_3: dict[str, Any] = {}  # search by no keys, return all checkpoints
+        query_4 = {"source": "update", "step": 1}  # no match
+
+        search_results_1 = [c async for c in saver.alist(None, filter=query_1)]
+        assert len(search_results_1) == 1
+        assert search_results_1[0].metadata == metadata[0]
+
+        search_results_2 = [c async for c in saver.alist(None, filter=query_2)]
+        assert len(search_results_2) == 1
+        assert search_results_2[0].metadata == metadata[1]
+
+        search_results_3 = [c async for c in saver.alist(None, filter=query_3)]
+        assert len(search_results_3) == 3
+
+        search_results_4 = [c async for c in saver.alist(None, filter=query_4)]
+        assert len(search_results_4) == 0
+
+        # search by config (defaults to checkpoints across all namespaces)
+        search_results_5 = [
+            c async for c in saver.alist({"configurable": {"thread_id": "thread-2"}})
+        ]
+        assert len(search_results_5) == 2
+        assert {
+            search_results_5[0].config["configurable"]["checkpoint_ns"],
+            search_results_5[1].config["configurable"]["checkpoint_ns"],
+        } == {"", "inner"}
+
+
+@pytest.mark.parametrize("saver_name", ["base", "pool"])
+async def test_null_chars(request, saver_name: str, test_data) -> None:
+    async with _saver(saver_name) as saver:
+        config = await saver.aput(
+            test_data["configs"][0],
+            test_data["checkpoints"][0],
+            {"my_key": "\x00abc"},
+            {},
+        )
+        assert (await saver.aget_tuple(config)).metadata["my_key"] == "abc"  # type: ignore
+        assert [c async for c in saver.alist(None, filter={"my_key": "abc"})][
+            0
+        ].metadata["my_key"] == "abc"
+
+
+@pytest.mark.parametrize("saver_name", ["base", "pool"])
+async def test_write_and_read_pending_writes_and_sends(
+    request, saver_name: str, test_data
+) -> None:
+    async with _saver(saver_name) as saver:
+        config: RunnableConfig = {
+            "configurable": {
+                "thread_id": "thread-1",
+                "checkpoint_id": "1",
+                "checkpoint_ns": "",
+            }
         }
-        self.metadata_3: CheckpointMetadata = {}
-        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
-            await saver.setup()
+        chkpnt = create_checkpoint(test_data["checkpoints"][0], {}, 1, id="1")
 
-    async def test_asearch(self) -> None:
-        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
-            await saver.aput(self.config_1, self.chkpnt_1, self.metadata_1, {})
-            await saver.aput(self.config_2, self.chkpnt_2, self.metadata_2, {})
-            await saver.aput(self.config_3, self.chkpnt_3, self.metadata_3, {})
+        await saver.aput(config, chkpnt, {}, {})
+        await saver.aput_writes(config, [("w1", "w1v"), ("w2", "w2v")], "world")
+        await saver.aput_writes(config, [(TASKS, "w3v")], "hello")
 
-            # call method / assertions
-            query_1 = {"source": "input"}  # search by 1 key
-            query_2 = {
-                "step": 1,
-                "writes": {"foo": "bar"},
-            }  # search by multiple keys
-            query_3: dict[str, Any] = {}  # search by no keys, return all checkpoints
-            query_4 = {"source": "update", "step": 1}  # no match
+        result = [c async for c in saver.alist({})][0]
 
-            search_results_1 = [c async for c in saver.alist(None, filter=query_1)]
-            assert len(search_results_1) == 1
-            assert search_results_1[0].metadata == self.metadata_1
+        assert result.pending_writes == [
+            ("hello", TASKS, "w3v"),
+            ("world", "w1", "w1v"),
+            ("world", "w2", "w2v"),
+        ]
 
-            search_results_2 = [c async for c in saver.alist(None, filter=query_2)]
-            assert len(search_results_2) == 1
-            assert search_results_2[0].metadata == self.metadata_2
+        assert result.checkpoint["pending_sends"] == ["w3v"]
 
-            search_results_3 = [c async for c in saver.alist(None, filter=query_3)]
-            assert len(search_results_3) == 3
 
-            search_results_4 = [c async for c in saver.alist(None, filter=query_4)]
-            assert len(search_results_4) == 0
-
-            # search by config (defaults to checkpoints across all namespaces)
-            search_results_5 = [
-                c
-                async for c in saver.alist({"configurable": {"thread_id": "thread-2"}})
-            ]
-            assert len(search_results_5) == 2
-            assert {
-                search_results_5[0].config["configurable"]["checkpoint_ns"],
-                search_results_5[1].config["configurable"]["checkpoint_ns"],
-            } == {"", "inner"}
-
-            # TODO: test before and limit params
-
-    async def test_null_chars(self) -> None:
-        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
-            config = await saver.aput(
-                self.config_1, self.chkpnt_1, {"my_key": "\x00abc"}, {}
-            )
-            assert (await saver.aget_tuple(config)).metadata["my_key"] == "abc"  # type: ignore
-            assert [c async for c in saver.alist(None, filter={"my_key": "abc"})][
-                0
-            ].metadata["my_key"] == "abc"
-
-    async def test_write_and_read_pending_writes_and_sends(self) -> None:
-        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
-            config: RunnableConfig = {
-                "configurable": {
-                    "thread_id": "thread-1",
-                    "checkpoint_id": "1",
-                    "checkpoint_ns": "",
-                }
+@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize(
+    "channel_values",
+    [
+        {"channel1": "channel1v"},
+        {},  # to catch regression reported in #10
+    ],
+)
+async def test_write_and_read_channel_values(
+    request, saver_name: str, channel_values: dict[str, Any]
+) -> None:
+    async with _saver(saver_name) as saver:
+        config: RunnableConfig = {
+            "configurable": {
+                "thread_id": "thread-4",
+                "checkpoint_id": "4",
+                "checkpoint_ns": "",
             }
-            chkpnt = create_checkpoint(self.chkpnt_1, {}, 1, id="1")
+        }
+        chkpnt = empty_checkpoint()
+        chkpnt["id"] = "4"
+        chkpnt["channel_values"] = channel_values
 
-            await saver.aput(config, chkpnt, {}, {})
-            await saver.aput_writes(config, [("w1", "w1v"), ("w2", "w2v")], "world")
-            await saver.aput_writes(config, [(TASKS, "w3v")], "hello")
+        newversions: ChannelVersions = {
+            "channel1": 1,
+            "channel:with:colon": 1,  # to catch regression reported in #9
+        }
+        chkpnt["channel_versions"] = newversions
 
-            result = [c async for c in saver.alist({})][0]
+        await saver.aput(config, chkpnt, {}, newversions)
 
-            assert result.pending_writes == [
-                ("hello", TASKS, "w3v"),
-                ("world", "w1", "w1v"),
-                ("world", "w2", "w2v"),
-            ]
+        result = [c async for c in saver.alist({})][0]
+        assert result.checkpoint["channel_values"] == channel_values
 
-            assert result.checkpoint["pending_sends"] == ["w3v"]
 
-    @pytest.mark.parametrize(
-        "channel_values",
-        [
-            {"channel1": "channel1v"},
-            {},  # to catch regression reported in #10
-        ],
-    )
-    async def test_write_and_read_channel_values(
-        self, channel_values: dict[str, Any]
-    ) -> None:
-        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
-            config: RunnableConfig = {
-                "configurable": {
-                    "thread_id": "thread-4",
-                    "checkpoint_id": "4",
-                    "checkpoint_ns": "",
-                }
+@pytest.mark.parametrize("saver_name", ["base", "pool"])
+async def test_write_and_read_pending_writes(request, saver_name: str) -> None:
+    async with _saver(saver_name) as saver:
+        config: RunnableConfig = {
+            "configurable": {
+                "thread_id": "thread-5",
+                "checkpoint_id": "5",
+                "checkpoint_ns": "",
             }
-            chkpnt = empty_checkpoint()
-            chkpnt["id"] = "4"
-            chkpnt["channel_values"] = channel_values
+        }
+        chkpnt = empty_checkpoint()
+        chkpnt["id"] = "5"
+        task_id = "task1"
+        writes = [
+            ("channel1", "somevalue"),
+            ("channel2", [1, 2, 3]),
+            ("channel3", None),
+        ]
 
-            newversions: ChannelVersions = {
-                "channel1": 1,
-                "channel:with:colon": 1,  # to catch regression reported in #9
-            }
-            chkpnt["channel_versions"] = newversions
+        await saver.aput(config, chkpnt, {}, {})
+        await saver.aput_writes(config, writes, task_id)
 
-            await saver.aput(config, chkpnt, {}, newversions)
+        result = [c async for c in saver.alist({})][0]
 
-            result = [c async for c in saver.alist({})][0]
-            assert result.checkpoint["channel_values"] == channel_values
-
-    async def test_write_and_read_pending_writes(self) -> None:
-        async with AIOMySQLSaver.from_conn_string(DEFAULT_URI) as saver:
-            config: RunnableConfig = {
-                "configurable": {
-                    "thread_id": "thread-5",
-                    "checkpoint_id": "5",
-                    "checkpoint_ns": "",
-                }
-            }
-            chkpnt = empty_checkpoint()
-            chkpnt["id"] = "5"
-            task_id = "task1"
-            writes = [
-                ("channel1", "somevalue"),
-                ("channel2", [1, 2, 3]),
-                ("channel3", None),
-            ]
-
-            await saver.aput(config, chkpnt, {}, {})
-            await saver.aput_writes(config, writes, task_id)
-
-            result = [c async for c in saver.alist({})][0]
-
-            assert result.pending_writes == [
-                (task_id, "channel1", "somevalue"),
-                (task_id, "channel2", [1, 2, 3]),
-                (task_id, "channel3", None),
-            ]
+        assert result.pending_writes == [
+            (task_id, "channel1", "somevalue"),
+            (task_id, "channel2", [1, 2, 3]),
+            (task_id, "channel3", None),
+        ]

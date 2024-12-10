@@ -8,7 +8,6 @@ from typing import Any, Optional
 import aiomysql  # type: ignore
 import pymysql
 import pymysql.connections
-import pymysql.constants.ER
 from langchain_core.runnables import RunnableConfig
 
 from langgraph.checkpoint.base import (
@@ -100,19 +99,15 @@ class AIOMySQLSaver(BaseMySQLSaver):
         the first time checkpointer is used.
         """
         async with self._cursor() as cur:
-            try:
-                await cur.execute(
-                    "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
-                )
-                row = await cur.fetchone()
-                if row is None:
-                    version = -1
-                else:
-                    version = row["v"]
-            except pymysql.ProgrammingError as e:
-                if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
-                    raise
+            await cur.execute(self.MIGRATIONS[0])
+            await cur.execute(
+                "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
+            )
+            row = await cur.fetchone()
+            if row is None:
                 version = -1
+            else:
+                version = row["v"]
             for v, migration in zip(
                 range(version + 1, len(self.MIGRATIONS)),
                 self.MIGRATIONS[version + 1 :],
