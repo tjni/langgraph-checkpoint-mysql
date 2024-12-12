@@ -57,9 +57,6 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[_ainternal.Conn]):
 
         return results
 
-    def batch(self, ops: Iterable[Op]) -> list[Result]:
-        return asyncio.run_coroutine_threadsafe(self.abatch(ops), self.loop).result()
-
     @staticmethod
     def parse_conn_string(conn_string: str) -> dict[str, Any]:
         parsed = urllib.parse.urlparse(conn_string)
