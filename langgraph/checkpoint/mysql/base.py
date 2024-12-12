@@ -61,13 +61,13 @@ MIGRATIONS = [
     CREATE INDEX checkpoints_thread_id_idx ON checkpoints (thread_id);
     """,
     """
-    CREATE INDEX checkpoints_checkpoint_id_idx ON checkpoints (checkpoint_id);
-    """,
-    """
     CREATE INDEX checkpoint_blobs_thread_id_idx ON checkpoint_blobs (thread_id);
     """,
     """
     CREATE INDEX checkpoint_writes_thread_id_idx ON checkpoint_writes (thread_id);
+    """,
+    """
+    CREATE INDEX checkpoints_checkpoint_id_idx ON checkpoints (checkpoint_id);
     """,
 ]
 
