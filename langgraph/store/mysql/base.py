@@ -331,7 +331,7 @@ class BaseSyncMySQLStore(
                         conn.rollback()
                         raise
             else:
-                with self._get_cursor_from_connection(conn) as cur:
+                with self.lock, self._get_cursor_from_connection(conn) as cur:
                     yield cur
 
     def batch(self, ops: Iterable[Op]) -> list[Result]:

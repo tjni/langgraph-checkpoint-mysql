@@ -255,5 +255,5 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[_ainternal.Conn]):
                     await conn.rollback()
                     raise
         else:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
+            async with self.lock, conn.cursor(aiomysql.DictCursor) as cur:
                 yield cur
