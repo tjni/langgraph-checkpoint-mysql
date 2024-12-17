@@ -1,6 +1,6 @@
 from collections.abc import Iterator
-from contextlib import contextmanager
-from typing import Any
+from contextlib import closing, contextmanager
+from typing import Any, cast
 from uuid import uuid4
 
 import pymysql
@@ -20,7 +20,7 @@ from tests.conftest import DEFAULT_BASE_URI, get_pymysql_sqlalchemy_pool
 
 
 @contextmanager
-def _pool_saver() -> Iterator[PyMySQLSaver]:
+def _sqlalchemy_pool_saver() -> Iterator[PyMySQLSaver]:
     """Fixture for pool mode testing."""
     database = f"test_{uuid4().hex[:16]}"
     # create unique db
@@ -34,6 +34,35 @@ def _pool_saver() -> Iterator[PyMySQLSaver]:
         checkpointer = PyMySQLSaver(
             get_pymysql_sqlalchemy_pool(DEFAULT_BASE_URI + database)
         )
+        checkpointer.setup()
+        yield checkpointer
+    finally:
+        # drop unique db
+        with pymysql.connect(
+            **PyMySQLSaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+        ) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"DROP DATABASE {database}")
+
+
+@contextmanager
+def _callable_saver() -> Iterator[PyMySQLSaver]:
+    """Fixture for pool mode testing."""
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    with pymysql.connect(
+        **PyMySQLSaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+    ) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        # yield checkpointer
+        pool = get_pymysql_sqlalchemy_pool(DEFAULT_BASE_URI + database)
+
+        def callable() -> pymysql.Connection:
+            return cast(pymysql.Connection, closing(pool.connect()))
+
+        checkpointer = PyMySQLSaver(callable)
         checkpointer.setup()
         yield checkpointer
     finally:
@@ -74,8 +103,11 @@ def _saver(name: str) -> Iterator[PyMySQLSaver]:
     if name == "base":
         with _base_saver() as saver:
             yield saver
-    elif name == "pool":
-        with _pool_saver() as saver:
+    elif name == "sqlalchemy_pool":
+        with _sqlalchemy_pool_saver() as saver:
+            yield saver
+    elif name == "callable":
+        with _callable_saver() as saver:
             yield saver
 
 
@@ -130,7 +162,7 @@ def test_data() -> dict[str, Any]:
     }
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
 def test_search(saver_name: str, test_data: dict[str, Any]) -> None:
     with _saver(saver_name) as saver:
         configs = test_data["configs"]
@@ -173,7 +205,7 @@ def test_search(saver_name: str, test_data: dict[str, Any]) -> None:
         } == {"", "inner"}
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
 def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
     with _saver(saver_name) as saver:
         config = saver.put(
@@ -189,7 +221,7 @@ def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
         )
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
 def test_write_and_read_pending_writes_and_sends(
     saver_name: str, test_data: dict[str, Any]
 ) -> None:
@@ -219,7 +251,7 @@ def test_write_and_read_pending_writes_and_sends(
         assert result.checkpoint["pending_sends"] == ["w3v"]
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
 @pytest.mark.parametrize(
     "channel_values",
     [
@@ -254,7 +286,7 @@ def test_write_and_read_channel_values(
         assert result.checkpoint["channel_values"] == channel_values
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
 def test_write_and_read_pending_writes(saver_name: str) -> None:
     with _saver(saver_name) as saver:
         config: RunnableConfig = {

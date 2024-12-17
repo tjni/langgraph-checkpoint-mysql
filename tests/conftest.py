@@ -1,13 +1,11 @@
 import urllib.parse
-from collections.abc import AsyncIterator, Callable
-from contextlib import closing
-from typing import cast
+from collections.abc import AsyncIterator
 
 import aiomysql  # type: ignore
 import pymysql
 import pymysql.constants.ER
 import pytest
-from sqlalchemy import create_pool_from_url
+from sqlalchemy import Pool, create_pool_from_url
 
 DEFAULT_BASE_URI = "mysql://mysql:mysql@localhost:5441/"
 DEFAULT_URI = DEFAULT_BASE_URI + "mysql"
@@ -46,7 +44,6 @@ async def clear_test_db(conn: aiomysql.Connection) -> None:
             raise
 
 
-def get_pymysql_sqlalchemy_pool(uri: str) -> Callable[[], pymysql.Connection]:
+def get_pymysql_sqlalchemy_pool(uri: str) -> Pool:
     updated_uri = uri.replace("mysql://", "mysql+pymysql://")
-    pool = create_pool_from_url(updated_uri)
-    return lambda: cast(pymysql.Connection, closing(pool.connect()))
+    return create_pool_from_url(updated_uri)
