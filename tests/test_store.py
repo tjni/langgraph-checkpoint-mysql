@@ -1,6 +1,8 @@
 # type: ignore
 
 import time
+from contextlib import closing
+from typing import cast
 from uuid import uuid4
 
 import pymysql
@@ -15,10 +17,10 @@ from langgraph.store.base import (
     SearchOp,
 )
 from langgraph.store.mysql import PyMySQLStore
-from tests.conftest import DEFAULT_BASE_URI, DEFAULT_URI
+from tests.conftest import DEFAULT_BASE_URI, DEFAULT_URI, get_pymysql_sqlalchemy_pool
 
 
-@pytest.fixture(scope="function", params=["default"])
+@pytest.fixture(scope="function", params=["default", "sqlalchemy_pool", "callable"])
 def store(request) -> PyMySQLStore:
     database = f"test_{uuid4().hex[:16]}"
 
@@ -31,8 +33,19 @@ def store(request) -> PyMySQLStore:
     try:
         with PyMySQLStore.from_conn_string(DEFAULT_BASE_URI + database) as store:
             store.setup()
-        with PyMySQLStore.from_conn_string(DEFAULT_BASE_URI + database) as store:
-            yield store
+
+        if request.param == "sqlalchemy_pool":
+            yield PyMySQLStore(get_pymysql_sqlalchemy_pool(DEFAULT_BASE_URI + database))
+        elif request.param == "callable":
+            pool = get_pymysql_sqlalchemy_pool(DEFAULT_BASE_URI + database)
+
+            def callable() -> pymysql.Connection:
+                return cast(pymysql.Connection, closing(pool.connect()))
+
+            yield PyMySQLStore(callable)
+        else:  # default
+            with PyMySQLStore.from_conn_string(DEFAULT_BASE_URI + database) as store:
+                yield store
     finally:
         with pymysql.connect(
             **PyMySQLStore.parse_conn_string(DEFAULT_BASE_URI),
