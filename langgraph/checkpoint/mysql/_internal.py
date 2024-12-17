@@ -1,6 +1,6 @@
 """Shared utility functions for the MySQL checkpoint & storage classes."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import ContextManager, Generic, Protocol, TypeVar, Union, cast
 
@@ -25,23 +25,27 @@ COut = TypeVar("COut", bound=Connection, covariant=True)  # connection type
 C = TypeVar("C", bound=Connection)  # connection type
 
 
-class ConnectionPool(Protocol, Generic[COut]):
-    """Protocol that a MySQL connection pool should implement."""
+class MySQLConnectionPool(Protocol, Generic[COut]):
+    """From mysql-connector-python package."""
 
     def get_connection(self) -> COut:
         """Gets a connection from the connection pool."""
         ...
 
 
-Conn = Union[C, ConnectionPool[C]]
+ConnectionFactory = Callable[[], C]
+Conn = Union[C, ConnectionFactory[C], MySQLConnectionPool[C]]
 
 
 @contextmanager
 def get_connection(conn: Conn[C]) -> Iterator[C]:
     if hasattr(conn, "cursor"):
         yield cast(C, conn)
+    elif callable(conn):
+        with conn() as _conn:
+            yield _conn
     elif hasattr(conn, "get_connection"):
-        with cast(ConnectionPool[C], conn).get_connection() as _conn:
+        with cast(MySQLConnectionPool[C], conn).get_connection() as _conn:
             yield _conn
     else:
         raise TypeError(f"Invalid connection type: {type(conn)}")

@@ -36,6 +36,7 @@ langgraph = "0.2.58"
 syrupy = "^4.0.2"
 pytest-repeat = "^0.9.3"
 pytest-xdist = {extras = ["psutil"], version = "^3.6.1"}
+sqlalchemy = "^2.0.36"
 
 [tool.pytest.ini_options]
 # --strict-markers will raise errors on unknown marks.
