@@ -119,6 +119,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
             ):
                 cur.execute(migration)
                 cur.execute(f"INSERT INTO checkpoint_migrations (v) VALUES ({v})")
+                cur.execute("COMMIT")
 
     def list(
         self,
