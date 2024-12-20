@@ -69,6 +69,11 @@ MIGRATIONS = [
     """
     CREATE INDEX checkpoints_checkpoint_id_idx ON checkpoints (checkpoint_id);
     """,
+    """
+    ALTER TABLE checkpoints MODIFY COLUMN `checkpoint_ns` LONGTEXT NOT NULL DEFAULT '';
+    ALTER TABLE checkpoint_blobs MODIFY COLUMN `checkpoint_ns` LONGTEXT NOT NULL DEFAULT '';
+    ALTER TABLE checkpoint_writes MODIFY COLUMN `checkpoint_ns` LONGTEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 SELECT_SQL = f"""
