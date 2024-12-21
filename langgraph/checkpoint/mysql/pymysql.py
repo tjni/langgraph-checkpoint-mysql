@@ -10,6 +10,7 @@ from typing_extensions import Self, override
 
 from langgraph.checkpoint.mysql import BaseSyncMySQLSaver
 from langgraph.checkpoint.mysql import Conn as BaseConn
+from langgraph.checkpoint.mysql.shallow import BaseShallowSyncMySQLSaver
 
 Conn = BaseConn[pymysql.Connection]  # type: ignore
 
@@ -48,7 +49,7 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
             PyMySQLSaver: A new PyMySQLSaver instance.
 
         Example:
-            conn_string=mysql+aiomysql://user:password@localhost/db?unix_socket=/path/to/socket
+            conn_string=mysql://user:password@localhost/db?unix_socket=/path/to/socket
         """
         with pymysql.connect(
             **cls.parse_conn_string(conn_string),
@@ -62,4 +63,34 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
         return conn.cursor(DictCursor)
 
 
-__all__ = ["PyMySQLSaver", "Conn"]
+class ShallowPyMySQLSaver(BaseShallowSyncMySQLSaver):
+    @classmethod
+    @contextmanager
+    def from_conn_string(
+        cls,
+        conn_string: str,
+    ) -> Iterator[Self]:
+        """Create a new ShallowPyMySQLSaver instance from a connection string.
+
+        Args:
+            conn_string (str): The MySQL connection info string.
+
+        Returns:
+            ShallowPyMySQLSaver: A new ShallowPyMySQLSaver instance.
+
+        Example:
+            conn_string=mysql://user:password@localhost/db?unix_socket=/path/to/socket
+        """
+        with pymysql.connect(
+            **PyMySQLSaver.parse_conn_string(conn_string),
+            autocommit=True,
+        ) as conn:
+            yield cls(conn)
+
+    @override
+    @staticmethod
+    def _get_cursor_from_connection(conn: pymysql.Connection) -> DictCursor:
+        return conn.cursor(DictCursor)
+
+
+__all__ = ["PyMySQLSaver", "ShallowPyMySQLSaver", "Conn"]

@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from copy import deepcopy
-from typing import Any, cast
+from typing import Any, Union, cast
 from uuid import uuid4
 
 import pymysql
@@ -15,7 +15,7 @@ from langgraph.checkpoint.base import (
     create_checkpoint,
     empty_checkpoint,
 )
-from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver
+from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver, ShallowPyMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
 from tests.conftest import DEFAULT_BASE_URI, get_pymysql_sqlalchemy_pool
 
@@ -100,9 +100,38 @@ def _base_saver() -> Iterator[PyMySQLSaver]:
 
 
 @contextmanager
-def _saver(name: str) -> Iterator[PyMySQLSaver]:
+def _shallow_saver() -> Iterator[ShallowPyMySQLSaver]:
+    """Fixture for regular connection mode testing with a shallow checkpointer."""
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    with pymysql.connect(
+        **PyMySQLSaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+    ) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        # yield checkpointer
+        with ShallowPyMySQLSaver.from_conn_string(
+            DEFAULT_BASE_URI + database
+        ) as checkpointer:
+            checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        with pymysql.connect(
+            **PyMySQLSaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+        ) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"DROP DATABASE {database}")
+
+
+@contextmanager
+def _saver(name: str) -> Iterator[Union[PyMySQLSaver, ShallowPyMySQLSaver]]:
     if name == "base":
         with _base_saver() as saver:
+            yield saver
+    if name == "shallow":
+        with _shallow_saver() as saver:
             yield saver
     elif name == "sqlalchemy_pool":
         with _sqlalchemy_pool_saver() as saver:
@@ -163,7 +192,9 @@ def test_data() -> dict[str, Any]:
     }
 
 
-@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
+@pytest.mark.parametrize(
+    "saver_name", ["base", "sqlalchemy_pool", "callable", "shallow"]
+)
 def test_search(saver_name: str, test_data: dict[str, Any]) -> None:
     with _saver(saver_name) as saver:
         configs = test_data["configs"]
@@ -206,7 +237,9 @@ def test_search(saver_name: str, test_data: dict[str, Any]) -> None:
         } == {"", "inner"}
 
 
-@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
+@pytest.mark.parametrize(
+    "saver_name", ["base", "sqlalchemy_pool", "callable", "shallow"]
+)
 def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
     with _saver(saver_name) as saver:
         config = saver.put(
@@ -222,7 +255,9 @@ def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
         )
 
 
-@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
+@pytest.mark.parametrize(
+    "saver_name", ["base", "sqlalchemy_pool", "callable", "shallow"]
+)
 def test_write_and_read_pending_writes_and_sends(
     saver_name: str, test_data: dict[str, Any]
 ) -> None:
@@ -252,7 +287,9 @@ def test_write_and_read_pending_writes_and_sends(
         assert result.checkpoint["pending_sends"] == ["w3v"]
 
 
-@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
+@pytest.mark.parametrize(
+    "saver_name", ["base", "sqlalchemy_pool", "callable", "shallow"]
+)
 @pytest.mark.parametrize(
     "channel_values",
     [
@@ -287,7 +324,9 @@ def test_write_and_read_channel_values(
         assert result.checkpoint["channel_values"] == channel_values
 
 
-@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
+@pytest.mark.parametrize(
+    "saver_name", ["base", "sqlalchemy_pool", "callable", "shallow"]
+)
 def test_write_and_read_pending_writes(saver_name: str) -> None:
     with _saver(saver_name) as saver:
         config: RunnableConfig = {
@@ -318,7 +357,9 @@ def test_write_and_read_pending_writes(saver_name: str) -> None:
         ]
 
 
-@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
+@pytest.mark.parametrize(
+    "saver_name", ["base", "sqlalchemy_pool", "callable", "shallow"]
+)
 def test_write_with_different_checkpoint_ns_inserts(saver_name: str) -> None:
     with _saver(saver_name) as saver:
         config1: RunnableConfig = {
@@ -341,7 +382,9 @@ def test_write_with_different_checkpoint_ns_inserts(saver_name: str) -> None:
         assert len(results) == 2
 
 
-@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
+@pytest.mark.parametrize(
+    "saver_name", ["base", "sqlalchemy_pool", "callable", "shallow"]
+)
 def test_write_with_same_checkpoint_ns_updates(saver_name: str) -> None:
     with _saver(saver_name) as saver:
         config: RunnableConfig = {

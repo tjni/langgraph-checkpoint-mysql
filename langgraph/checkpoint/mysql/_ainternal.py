@@ -2,7 +2,43 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncContextManager, Generic, Protocol, TypeVar, Union, cast
+from typing import (
+    Any,
+    AsyncContextManager,
+    Generic,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    TypeVar,
+    Union,
+    cast,
+)
+
+
+class AsyncDictCursor(AsyncContextManager, Protocol):
+    """
+    Protocol that a cursor should implement.
+
+    Modeled after DBAPICursor from Typeshed.
+    """
+
+    async def execute(
+        self,
+        operation: str,
+        parameters: Union[Sequence[Any], Mapping[str, Any]] = ...,
+        /,
+    ) -> object: ...
+    async def executemany(
+        self, operation: str, seq_of_parameters: Sequence[Sequence[Any]], /
+    ) -> object: ...
+    async def fetchone(self) -> Optional[dict[str, Any]]: ...
+    async def fetchall(self) -> Sequence[dict[str, Any]]: ...
+
+    def __aiter__(self) -> AsyncIterator[dict[str, Any]]: ...
+
+
+R = TypeVar("R", bound=AsyncDictCursor)  # cursor type
 
 
 class AIOMySQLConnection(AsyncContextManager, Protocol):

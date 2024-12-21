@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from copy import deepcopy
-from typing import Any
+from typing import Any, Union
 from uuid import uuid4
 
 import aiomysql  # type: ignore
@@ -15,7 +15,7 @@ from langgraph.checkpoint.base import (
     create_checkpoint,
     empty_checkpoint,
 )
-from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
+from langgraph.checkpoint.mysql.aio import AIOMySQLSaver, ShallowAIOMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
 from tests.conftest import DEFAULT_BASE_URI
 
@@ -77,9 +77,40 @@ async def _base_saver() -> AsyncIterator[AIOMySQLSaver]:
 
 
 @asynccontextmanager
-async def _saver(name: str) -> AsyncIterator[AIOMySQLSaver]:
+async def _shallow_saver() -> AsyncIterator[ShallowAIOMySQLSaver]:
+    """Fixture for shallow connection mode testing."""
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    async with await aiomysql.connect(
+        **AIOMySQLSaver.parse_conn_string(DEFAULT_BASE_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        async with ShallowAIOMySQLSaver.from_conn_string(
+            DEFAULT_BASE_URI + database
+        ) as checkpointer:
+            await checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        async with await aiomysql.connect(
+            **AIOMySQLSaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
+async def _saver(
+    name: str,
+) -> AsyncIterator[Union[AIOMySQLSaver, ShallowAIOMySQLSaver]]:
     if name == "base":
         async with _base_saver() as saver:
+            yield saver
+    elif name == "shallow":
+        async with _shallow_saver() as saver:
             yield saver
     elif name == "pool":
         async with _pool_saver() as saver:
@@ -137,7 +168,7 @@ def test_data() -> dict[str, Any]:
     }
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
 async def test_asearch(saver_name: str, test_data: dict[str, Any]) -> None:
     async with _saver(saver_name) as saver:
         configs = test_data["configs"]
@@ -182,7 +213,7 @@ async def test_asearch(saver_name: str, test_data: dict[str, Any]) -> None:
         } == {"", "inner"}
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
 async def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
     async with _saver(saver_name) as saver:
         config = await saver.aput(
@@ -197,7 +228,7 @@ async def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
         ].metadata["my_key"] == "abc"
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
 async def test_write_and_read_pending_writes_and_sends(
     saver_name: str, test_data: dict[str, Any]
 ) -> None:
@@ -226,7 +257,7 @@ async def test_write_and_read_pending_writes_and_sends(
         assert result.checkpoint["pending_sends"] == ["w3v"]
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
 @pytest.mark.parametrize(
     "channel_values",
     [
@@ -261,7 +292,7 @@ async def test_write_and_read_channel_values(
         assert result.checkpoint["channel_values"] == channel_values
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
 async def test_write_and_read_pending_writes(saver_name: str) -> None:
     async with _saver(saver_name) as saver:
         config: RunnableConfig = {
@@ -292,7 +323,7 @@ async def test_write_and_read_pending_writes(saver_name: str) -> None:
         ]
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
 async def test_write_with_different_checkpoint_ns_inserts(
     saver_name: str,
 ) -> None:
@@ -317,7 +348,7 @@ async def test_write_with_different_checkpoint_ns_inserts(
         assert len(results) == 2
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool"])
+@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
 async def test_write_with_same_checkpoint_ns_updates(
     saver_name: str,
 ) -> None:
