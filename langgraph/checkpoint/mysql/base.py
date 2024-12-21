@@ -72,6 +72,24 @@ MIGRATIONS = [
     "ALTER TABLE checkpoints MODIFY COLUMN `checkpoint_ns` VARCHAR(255) NOT NULL DEFAULT '';",
     "ALTER TABLE checkpoint_blobs MODIFY COLUMN `checkpoint_ns` VARCHAR(255) NOT NULL DEFAULT '';",
     "ALTER TABLE checkpoint_writes MODIFY COLUMN `checkpoint_ns` VARCHAR(255) NOT NULL DEFAULT '';",
+    """
+    ALTER TABLE checkpoints
+    DROP PRIMARY KEY,
+    ADD PRIMARY KEY (thread_id, checkpoint_id),
+    MODIFY COLUMN `checkpoint_ns` VARCHAR(2000) NOT NULL DEFAULT '';
+    """,
+    """
+    ALTER TABLE checkpoint_blobs
+    DROP PRIMARY KEY,
+    ADD PRIMARY KEY (thread_id, channel, version),
+    MODIFY COLUMN `checkpoint_ns` VARCHAR(2000) NOT NULL DEFAULT '';
+    """,
+    """
+    ALTER TABLE checkpoint_writes
+    DROP PRIMARY KEY,
+    ADD PRIMARY KEY (thread_id, checkpoint_id, task_id, idx),
+    MODIFY COLUMN `checkpoint_ns` VARCHAR(2000) NOT NULL DEFAULT '';
+    """,
 ]
 
 SELECT_SQL = f"""
