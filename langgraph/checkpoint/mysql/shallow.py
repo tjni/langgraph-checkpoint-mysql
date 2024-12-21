@@ -199,7 +199,7 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
         Args:
             pipeline (bool): whether to use transaction context manager and handle concurrency
         """
-        with _internal.get_connection(self.conn) as conn:
+        with _internal.get_connection(self.conn) as conn:  # type: _internal.C
             if pipeline:
                 with self.lock:
                     conn.begin()

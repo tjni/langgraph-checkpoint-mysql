@@ -5,7 +5,7 @@ import aiomysql  # type: ignore
 import pymysql
 import pymysql.constants.ER
 import pytest
-from sqlalchemy import Pool, create_pool_from_url
+from sqlalchemy import Engine, Pool, create_engine, create_pool_from_url
 
 DEFAULT_BASE_URI = "mysql://mysql:mysql@localhost:5441/"
 DEFAULT_URI = DEFAULT_BASE_URI + "mysql"
@@ -42,6 +42,11 @@ async def clear_test_db(conn: aiomysql.Connection) -> None:
     except pymysql.ProgrammingError as e:
         if e.args[0] != pymysql.constants.ER.NO_SUCH_TABLE:
             raise
+
+
+def get_pymysql_sqlalchemy_engine(uri: str) -> Engine:
+    updated_uri = uri.replace("mysql://", "mysql+pymysql://")
+    return create_engine(updated_uri)
 
 
 def get_pymysql_sqlalchemy_pool(uri: str) -> Pool:

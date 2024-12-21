@@ -1,11 +1,10 @@
 """Shared utility functions for the MySQL checkpoint & storage classes."""
 
 from collections.abc import Callable, Iterator
-from contextlib import closing, contextmanager
+from contextlib import AbstractContextManager, closing, contextmanager
 from typing import (
     Any,
     ContextManager,
-    Generic,
     Mapping,
     Optional,
     Protocol,
@@ -39,8 +38,8 @@ class DictCursor(ContextManager, Protocol):
 R = TypeVar("R", bound=DictCursor)  # cursor type
 
 
-class Connection(ContextManager, Protocol):
-    """Protocol that a MySQL connection should implement."""
+class Connection(AbstractContextManager, Protocol):
+    """Protocol that a synchronous MySQL connection should implement."""
 
     def begin(self) -> None:
         """Begin transaction."""
@@ -55,47 +54,30 @@ class Connection(ContextManager, Protocol):
         ...
 
 
-COut = TypeVar("COut", bound=Connection, covariant=True)  # connection type
 C = TypeVar("C", bound=Connection)  # connection type
 
 
-class MySQLConnectionPool(Protocol, Generic[COut]):
-    """From mysql-connector-python package."""
-
-    def get_connection(self) -> COut:
-        """Gets a connection from the connection pool."""
-        ...
-
-
-class SQLAlchemyPoolProxiedConnection(Protocol):
-    def close(self) -> None: ...
-
-
-class SQLAlchemyConnectionPool(Protocol):
-    """From sqlalchemy package."""
-
-    def connect(self) -> SQLAlchemyPoolProxiedConnection:
-        """Gets a connection from the connection pool."""
-        ...
-
-
-ConnectionFactory = Callable[[], C]
-Conn = Union[C, ConnectionFactory[C], MySQLConnectionPool[C], SQLAlchemyConnectionPool]
+ConnectionFactory = Callable[[], Any]
+Conn = Union[C, ConnectionFactory]
 
 
 @contextmanager
 def get_connection(conn: Conn[C]) -> Iterator[C]:
     if hasattr(conn, "cursor"):
         yield cast(C, conn)
-    elif hasattr(conn, "get_connection"):
-        with cast(MySQLConnectionPool[C], conn).get_connection() as _conn:
-            yield _conn
-    elif hasattr(conn, "connect"):
-        proxy_conn = cast(SQLAlchemyConnectionPool, conn).connect()
-        with closing(proxy_conn) as _conn:
-            yield cast(C, _conn)
     elif callable(conn):
-        with conn() as _conn:
+        _conn = conn()
+        if isinstance(_conn, AbstractContextManager):
+            yield cast(C, _conn)
+        else:
+            with closing(_conn) as __conn:
+                yield __conn
+    # This is kept for backwards incompatibility and should be removed when we
+    # can make a breaking change in favor of just passing a Callable.
+    elif hasattr(conn, "connect"):
+        # sqlalchemy pool
+        factory: ConnectionFactory = getattr(conn, "connect")  # noqa: B009
+        with get_connection(factory) as _conn:
             yield _conn
     else:
-        raise TypeError(f"Invalid connection type: {type(conn)}")
+        raise TypeError(f"Invalid connection or pool type: {type(conn)}")
