@@ -293,7 +293,7 @@ async def test_write_and_read_pending_writes(saver_name: str) -> None:
 
 
 @pytest.mark.parametrize("saver_name", ["base", "pool"])
-async def test_write_with_different_checkpoint_ns_does_an_update(
+async def test_write_with_different_checkpoint_ns_inserts(
     saver_name: str,
 ) -> None:
     async with _saver(saver_name) as saver:
@@ -315,3 +315,26 @@ async def test_write_with_different_checkpoint_ns_does_an_update(
         results = [c async for c in saver.alist({})]
 
         assert len(results) == 2
+
+
+@pytest.mark.parametrize("saver_name", ["base", "pool"])
+async def test_write_with_same_checkpoint_ns_updates(
+    saver_name: str,
+) -> None:
+    async with _saver(saver_name) as saver:
+        config: RunnableConfig = {
+            "configurable": {
+                "thread_id": "thread-6",
+                "checkpoint_id": "6",
+                "checkpoint_ns": "first",
+            }
+        }
+
+        chkpnt = empty_checkpoint()
+
+        await saver.aput(config, chkpnt, {}, {})
+        await saver.aput(config, chkpnt, {}, {})
+
+        results = [c async for c in saver.alist({})]
+
+        assert len(results) == 1

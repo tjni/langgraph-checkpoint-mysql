@@ -329,7 +329,7 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
             param_values.append(config["configurable"]["thread_id"])
             checkpoint_ns = config["configurable"].get("checkpoint_ns")
             if checkpoint_ns is not None:
-                wheres.append("checkpoint_ns = %s")
+                wheres.append("checkpoint_ns_hash = UNHEX(MD5(%s))")
                 param_values.append(checkpoint_ns)
 
             if checkpoint_id := get_checkpoint_id(config):

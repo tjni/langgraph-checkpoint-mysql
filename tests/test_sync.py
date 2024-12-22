@@ -319,7 +319,7 @@ def test_write_and_read_pending_writes(saver_name: str) -> None:
 
 
 @pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
-def test_write_with_different_checkpoint_ns_does_an_update(saver_name: str) -> None:
+def test_write_with_different_checkpoint_ns_inserts(saver_name: str) -> None:
     with _saver(saver_name) as saver:
         config1: RunnableConfig = {
             "configurable": {
@@ -339,3 +339,24 @@ def test_write_with_different_checkpoint_ns_does_an_update(saver_name: str) -> N
         results = list(saver.list({}))
 
         assert len(results) == 2
+
+
+@pytest.mark.parametrize("saver_name", ["base", "sqlalchemy_pool", "callable"])
+def test_write_with_same_checkpoint_ns_updates(saver_name: str) -> None:
+    with _saver(saver_name) as saver:
+        config: RunnableConfig = {
+            "configurable": {
+                "thread_id": "thread-6",
+                "checkpoint_id": "6",
+                "checkpoint_ns": "first",
+            }
+        }
+
+        chkpnt = empty_checkpoint()
+
+        saver.put(config, chkpnt, {}, {})
+        saver.put(config, chkpnt, {}, {})
+
+        results = list(saver.list({}))
+
+        assert len(results) == 1

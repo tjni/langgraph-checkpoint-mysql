@@ -240,10 +240,10 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
         if checkpoint_id:
             args: tuple[Any, ...] = (thread_id, checkpoint_ns, checkpoint_id)
-            where = "WHERE thread_id = %s AND checkpoint_ns = %s AND checkpoint_id = %s"
+            where = "WHERE thread_id = %s AND checkpoint_ns_hash = UNHEX(MD5(%s)) AND checkpoint_id = %s"
         else:
             args = (thread_id, checkpoint_ns)
-            where = "WHERE thread_id = %s AND checkpoint_ns = %s ORDER BY checkpoint_id DESC LIMIT 1"
+            where = "WHERE thread_id = %s AND checkpoint_ns_hash = UNHEX(MD5(%s)) ORDER BY checkpoint_id DESC LIMIT 1"
 
         with self._cursor() as cur:
             cur.execute(
