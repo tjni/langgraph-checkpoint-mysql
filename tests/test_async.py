@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from typing import Any
 from uuid import uuid4
 
@@ -289,3 +290,28 @@ async def test_write_and_read_pending_writes(saver_name: str) -> None:
             (task_id, "channel2", [1, 2, 3]),
             (task_id, "channel3", None),
         ]
+
+
+@pytest.mark.parametrize("saver_name", ["base", "pool"])
+async def test_write_with_different_checkpoint_ns_does_an_update(
+    saver_name: str,
+) -> None:
+    async with _saver(saver_name) as saver:
+        config1: RunnableConfig = {
+            "configurable": {
+                "thread_id": "thread-6",
+                "checkpoint_id": "6",
+                "checkpoint_ns": "first",
+            }
+        }
+        config2 = deepcopy(config1)
+        config2["configurable"]["checkpoint_ns"] = "second"
+
+        chkpnt = empty_checkpoint()
+
+        await saver.aput(config1, chkpnt, {}, {})
+        await saver.aput(config2, chkpnt, {}, {})
+
+        results = [c async for c in saver.alist({})]
+
+        assert len(results) == 2
