@@ -69,9 +69,13 @@ MIGRATIONS = [
     """
     CREATE INDEX checkpoints_checkpoint_id_idx ON checkpoints (checkpoint_id);
     """,
+    # The following three migrations were contributed to buy more room for
+    # nested subgraphs, since that contributes to checkpoint_ns length.
     "ALTER TABLE checkpoints MODIFY COLUMN `checkpoint_ns` VARCHAR(255) NOT NULL DEFAULT '';",
     "ALTER TABLE checkpoint_blobs MODIFY COLUMN `checkpoint_ns` VARCHAR(255) NOT NULL DEFAULT '';",
     "ALTER TABLE checkpoint_writes MODIFY COLUMN `checkpoint_ns` VARCHAR(255) NOT NULL DEFAULT '';",
+    # The following three migrations drastically increase the size of the
+    # checkpoint_ns field to support deeply nested subgraphs.
     """
     ALTER TABLE checkpoints
     DROP PRIMARY KEY,
@@ -89,6 +93,26 @@ MIGRATIONS = [
     DROP PRIMARY KEY,
     ADD PRIMARY KEY (thread_id, checkpoint_id, task_id, idx),
     MODIFY COLUMN `checkpoint_ns` VARCHAR(2000) NOT NULL DEFAULT '';
+    """,
+    # The following three migrations restore checkpoint_ns as part of the
+    # primary key, but hashed to fit into the primary key size limit.
+    """
+    ALTER TABLE checkpoints
+    ADD COLUMN checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,
+    DROP PRIMARY KEY,
+    ADD PRIMARY KEY (thread_id, checkpoint_ns_hash, checkpoint_id);
+    """,
+    """
+    ALTER TABLE checkpoint_blobs
+    ADD COLUMN checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,
+    DROP PRIMARY KEY,
+    ADD PRIMARY KEY (thread_id, checkpoint_ns_hash, channel, version);
+    """,
+    """
+    ALTER TABLE checkpoint_writes
+    ADD COLUMN checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,
+    DROP PRIMARY KEY,
+    ADD PRIMARY KEY (thread_id, checkpoint_ns_hash, checkpoint_id, task_id, idx);
     """,
 ]
 
@@ -114,7 +138,7 @@ select
         ) as channel_versions
         inner join checkpoint_blobs bl
             on bl.thread_id = checkpoints.thread_id
-            and bl.checkpoint_ns = checkpoints.checkpoint_ns
+            and bl.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
             and bl.channel = channel_versions.channel
             and bl.version = channel_versions.version
     ) as channel_values,
@@ -123,14 +147,14 @@ select
         json_arrayagg(json_array(cw.task_id, cw.channel, cw.type, cw.blob, cw.idx))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
-            and cw.checkpoint_ns = checkpoints.checkpoint_ns
+            and cw.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
             and cw.checkpoint_id = checkpoints.checkpoint_id
     ) as pending_writes,
     (
         select json_arrayagg(json_array(cw.task_id, cw.type, cw.blob, cw.idx))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
-            and cw.checkpoint_ns = checkpoints.checkpoint_ns
+            and cw.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
             and cw.checkpoint_id = checkpoints.parent_checkpoint_id
             and cw.channel = '{TASKS}'
     ) as pending_sends
