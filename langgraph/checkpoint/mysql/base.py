@@ -137,10 +137,10 @@ select
             ) as channels
         ) as channel_versions
         inner join checkpoint_blobs bl
-            on bl.thread_id = checkpoints.thread_id
-            and bl.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
-            and bl.channel = channel_versions.channel
+            on bl.channel = channel_versions.channel
             and bl.version = channel_versions.version
+        where bl.thread_id = checkpoints.thread_id
+            and bl.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
     ) as channel_values,
     (
         select
