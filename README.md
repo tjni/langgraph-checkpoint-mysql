@@ -6,7 +6,7 @@ Implementation of LangGraph CheckpointSaver that uses MySQL.
 > The code in this repository tries to mimic the code in [langgraph-checkpoint-postgres](https://github.com/langchain-ai/langgraph/tree/main/libs/checkpoint-postgres) as much as possible to enable keeping in sync with the official checkpointer implementation.
 
 > [!NOTE]
-> In order to keep the queries close to the Postgres queries, we use features from recent versions of MySQL 8. I'm not sure what the exact minimum version is.
+> In order to keep the queries close to the Postgres queries, we use features that require MySQL >= 8.0.19.
 
 ## Dependencies
 
