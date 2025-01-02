@@ -11,13 +11,17 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        mysql-version:
+          - "9"
+          - "8"
+          - "8.0.19"
         python-version:
           - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
 
-    name: "test #${{ matrix.python-version }}"
+    name: "test python ${{ matrix.python-version }} | mysql ${{ matrix.mysql-version }}"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }} + Poetry ${{ env.POETRY_VERSION }}
@@ -34,6 +38,8 @@ jobs:
 
       - name: Run tests
         shell: bash
+        env:
+          MYSQL_VERSIONS: ${{ matrix.mysql-version }}
         run: |
           make test
 

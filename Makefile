@@ -5,7 +5,7 @@
 ######################
 
 start-mysql:
-	MYSQL_VERSION=${MYSQL_VERSION:-8} docker compose -f tests/compose-mysql.yml up -V --force-recreate --wait || ( \
+	MYSQL_VERSION=${MYSQL_VERSION} docker compose -f tests/compose-mysql.yml up -V --force-recreate --wait || ( \
     echo "Failed to start MySQL, printing logs..."; \
 		docker compose -f tests/compose-mysql.yml logs; \
 		exit 1 \
