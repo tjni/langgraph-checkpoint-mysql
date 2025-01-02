@@ -27,7 +27,7 @@ from langgraph.checkpoint.mysql.utils import (
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
-Conn = _ainternal.Conn  # For backward compatibility
+Conn = _ainternal.Conn[aiomysql.Connection]  # For backward compatibility
 
 
 class AIOMySQLSaver(BaseMySQLSaver):
