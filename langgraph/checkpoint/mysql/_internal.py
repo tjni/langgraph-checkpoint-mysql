@@ -2,7 +2,41 @@
 
 from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
-from typing import ContextManager, Generic, Protocol, TypeVar, Union, cast
+from typing import (
+    Any,
+    ContextManager,
+    Generic,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    TypeVar,
+    Union,
+    cast,
+)
+
+
+class DictCursor(ContextManager, Protocol):
+    """
+    Protocol that a cursor should implement.
+
+    Modeled after DBAPICursor from Typeshed.
+    """
+
+    def execute(
+        self,
+        operation: str,
+        parameters: Union[Sequence[Any], Mapping[str, Any]] = ...,
+        /,
+    ) -> object: ...
+    def executemany(
+        self, operation: str, seq_of_parameters: Sequence[Sequence[Any]], /
+    ) -> object: ...
+    def fetchone(self) -> Optional[dict[str, Any]]: ...
+    def fetchall(self) -> Sequence[dict[str, Any]]: ...
+
+
+R = TypeVar("R", bound=DictCursor)  # cursor type
 
 
 class Connection(ContextManager, Protocol):

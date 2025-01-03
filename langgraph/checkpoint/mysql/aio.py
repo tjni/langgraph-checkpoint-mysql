@@ -3,12 +3,13 @@ import json
 import urllib.parse
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import aiomysql  # type: ignore
 import pymysql
 import pymysql.connections
 from langchain_core.runnables import RunnableConfig
+from typing_extensions import Self, override
 
 from langgraph.checkpoint.base import (
     WRITES_IDX_MAP,
@@ -20,6 +21,7 @@ from langgraph.checkpoint.base import (
 )
 from langgraph.checkpoint.mysql import _ainternal
 from langgraph.checkpoint.mysql.base import BaseMySQLSaver
+from langgraph.checkpoint.mysql.shallow import BaseShallowAsyncMySQLSaver
 from langgraph.checkpoint.mysql.utils import (
     deserialize_channel_values,
     deserialize_pending_sends,
@@ -27,7 +29,7 @@ from langgraph.checkpoint.mysql.utils import (
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
-Conn = _ainternal.Conn  # For backward compatibility
+Conn = _ainternal.Conn[aiomysql.Connection]  # For backward compatibility
 
 
 class AIOMySQLSaver(BaseMySQLSaver):
@@ -69,7 +71,7 @@ class AIOMySQLSaver(BaseMySQLSaver):
         conn_string: str,
         *,
         serde: Optional[SerializerProtocol] = None,
-    ) -> AsyncIterator["AIOMySQLSaver"]:
+    ) -> AsyncIterator[Self]:
         """Create a new AIOMySQLSaver instance from a connection string.
 
         Args:
@@ -466,4 +468,42 @@ class AIOMySQLSaver(BaseMySQLSaver):
         ).result()
 
 
-__all__ = ["AIOMySQLSaver", "Conn"]
+class ShallowAIOMySQLSaver(
+    BaseShallowAsyncMySQLSaver[aiomysql.Connection, aiomysql.DictCursor]
+):
+    @classmethod
+    @asynccontextmanager
+    async def from_conn_string(
+        cls,
+        conn_string: str,
+        *,
+        serde: Optional[SerializerProtocol] = None,
+    ) -> AsyncIterator[Self]:
+        """Create a new ShallowAIOMySQLSaver instance from a connection string.
+
+        Args:
+            conn_string (str): The MySQL connection info string.
+
+        Returns:
+            ShallowAIOMySQLSaver: A new ShallowAIOMySQLSaver instance.
+
+        Example:
+            conn_string=mysql+aiomysql://user:password@localhost/db?unix_socket=/path/to/socket
+        """
+        async with aiomysql.connect(
+            **AIOMySQLSaver.parse_conn_string(conn_string),
+            autocommit=True,
+        ) as conn:
+            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
+            # is merged into aiomysql.
+            await conn.set_charset(pymysql.connections.DEFAULT_CHARSET)
+
+            yield cls(conn=conn, serde=serde)
+
+    @override
+    @staticmethod
+    def _get_cursor_from_connection(conn: aiomysql.Connection) -> aiomysql.DictCursor:
+        return cast(aiomysql.DictCursor, conn.cursor(aiomysql.DictCursor))
+
+
+__all__ = ["AIOMySQLSaver", "ShallowAIOMySQLSaver", "Conn"]

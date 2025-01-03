@@ -56,6 +56,7 @@ from tests.any_str import AnyStr, AnyVersion, FloatBetween, UnsortedSequence
 from tests.conftest import (
     ALL_CHECKPOINTERS_SYNC,
     ALL_STORES_SYNC,
+    REGULAR_CHECKPOINTERS_SYNC,
     SHOULD_CHECK_SNAPSHOTS,
 )
 from tests.messages import (
@@ -63,7 +64,7 @@ from tests.messages import (
 )
 
 
-@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+@pytest.mark.parametrize("checkpointer_name", REGULAR_CHECKPOINTERS_SYNC)
 def test_run_from_checkpoint_id_retains_previous_writes(
     request: pytest.FixtureRequest, checkpointer_name: str, mocker: MockerFixture
 ) -> None:
@@ -318,6 +319,10 @@ def test_pending_writes_resume(
     two.rtn = {"value": 3}
     # both the pending write and the new write were applied, 1 + 2 + 3 = 6
     assert graph.invoke(None, thread1) == {"value": 6}
+
+    if "shallow" in checkpointer_name:
+        assert len(list(checkpointer.list(thread1))) == 1
+        return
 
     # check all final checkpoints
     checkpoints = [c for c in checkpointer.list(thread1)]
@@ -630,6 +635,9 @@ def test_invoke_checkpoint_three(
     assert state.values.get("total") == 5
     assert state.next == ()
 
+    if "shallow" in checkpointer_name:
+        return
+
     assert len(list(app.get_state_history(thread_1, limit=1))) == 1
     # list all checkpoints for thread 1
     thread_1_history = [c for c in app.get_state_history(thread_1)]
@@ -861,6 +869,11 @@ def test_in_one_fan_out_state_graph_waiting_edge(
     ]
 
     app_w_interrupt.update_state(config, {"docs": ["doc5"]})
+    expected_parent_config = (
+        None
+        if "shallow" in checkpointer_name
+        else list(app_w_interrupt.checkpointer.list(config, limit=2))[-1].config
+    )
     assert app_w_interrupt.get_state(config) == StateSnapshot(
         values={
             "query": "analyzed: query: what is weather in sf",
@@ -868,8 +881,14 @@ def test_in_one_fan_out_state_graph_waiting_edge(
         },
         tasks=(PregelTask(AnyStr(), "qa", (PULL, "qa")),),
         next=("qa",),
-        config=app_w_interrupt.checkpointer.get_tuple(config).config,
-        created_at=app_w_interrupt.checkpointer.get_tuple(config).checkpoint["ts"],
+        config={
+            "configurable": {
+                "thread_id": "2",
+                "checkpoint_ns": "",
+                "checkpoint_id": AnyStr(),
+            }
+        },
+        created_at=AnyStr(),
         metadata={
             "parents": {},
             "source": "update",
@@ -877,7 +896,7 @@ def test_in_one_fan_out_state_graph_waiting_edge(
             "writes": {"retriever_one": {"docs": ["doc5"]}},
             "thread_id": "2",
         },
-        parent_config=[*app_w_interrupt.checkpointer.list(config, limit=2)][-1].config,
+        parent_config=expected_parent_config,
     )
 
     assert [c for c in app_w_interrupt.stream(None, config, debug=1)] == [
@@ -1946,13 +1965,17 @@ def test_parent_command(request: pytest.FixtureRequest, checkpointer_name: str) 
             "parents": {},
         },
         created_at=AnyStr(),
-        parent_config={
-            "configurable": {
-                "thread_id": "1",
-                "checkpoint_ns": "",
-                "checkpoint_id": AnyStr(),
+        parent_config=(
+            None
+            if "shallow" in checkpointer_name
+            else {
+                "configurable": {
+                    "thread_id": "1",
+                    "checkpoint_ns": "",
+                    "checkpoint_id": AnyStr(),
+                }
             }
-        },
+        ),
         tasks=(),
     )
 
@@ -2260,3 +2283,57 @@ def test_command_goto_with_static_breakpoints(
     graph.invoke({"foo": "abc"}, config)
     result = graph.invoke(Command(goto=["node2"]), config)
     assert result == {"foo": "abc|node-1|node-2|node-2"}
+
+
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+def test_checkpoint_recovery(request: pytest.FixtureRequest, checkpointer_name: str):
+    """Test recovery from checkpoints after failures."""
+    checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
+
+    class State(TypedDict):
+        steps: Annotated[list[str], operator.add]
+        attempt: int  # Track number of attempts
+
+    def failing_node(state: State):
+        # Fail on first attempt, succeed on retry
+        if state["attempt"] == 1:
+            raise RuntimeError("Simulated failure")
+        return {"steps": ["node1"]}
+
+    def second_node(state: State):
+        return {"steps": ["node2"]}
+
+    builder = StateGraph(State)
+    builder.add_node("node1", failing_node)
+    builder.add_node("node2", second_node)
+    builder.add_edge(START, "node1")
+    builder.add_edge("node1", "node2")
+
+    graph = builder.compile(checkpointer=checkpointer)
+    config = {"configurable": {"thread_id": "1"}}
+
+    # First attempt should fail
+    with pytest.raises(RuntimeError):
+        graph.invoke({"steps": ["start"], "attempt": 1}, config)
+
+    # Verify checkpoint state
+    state = graph.get_state(config)
+    assert state is not None
+    assert state.values == {"steps": ["start"], "attempt": 1}  # input state saved
+    assert state.next == ("node1",)  # Should retry failed node
+    assert "RuntimeError('Simulated failure')" in state.tasks[0].error
+
+    # Retry with updated attempt count
+    result = graph.invoke({"steps": [], "attempt": 2}, config)
+    assert result == {"steps": ["start", "node1", "node2"], "attempt": 2}
+
+    if "shallow" in checkpointer_name:
+        return
+
+    # Verify checkpoint history shows both attempts
+    history = list(graph.get_state_history(config))
+    assert len(history) == 6  # Initial + failed attempt + successful attempt
+
+    # Verify the error was recorded in checkpoint
+    failed_checkpoint = next(c for c in history if c.tasks and c.tasks[0].error)
+    assert "RuntimeError('Simulated failure')" in failed_checkpoint.tasks[0].error

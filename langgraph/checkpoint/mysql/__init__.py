@@ -2,16 +2,7 @@ import json
 import threading
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from typing import (
-    Any,
-    ContextManager,
-    Generic,
-    Mapping,
-    Optional,
-    Protocol,
-    TypeVar,
-    Union,
-)
+from typing import Any, Generic, Optional
 
 from langchain_core.runnables import RunnableConfig
 
@@ -32,34 +23,10 @@ from langgraph.checkpoint.mysql.utils import (
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
-
-class DictCursor(ContextManager, Protocol):
-    """
-    Protocol that a cursor should implement.
-
-    Modeled after DBAPICursor from Typeshed.
-    """
-
-    def execute(
-        self,
-        operation: str,
-        parameters: Union[Sequence[Any], Mapping[str, Any]] = ...,
-        /,
-    ) -> object: ...
-    def executemany(
-        self, operation: str, seq_of_parameters: Sequence[Sequence[Any]], /
-    ) -> object: ...
-    def fetchone(self) -> Optional[dict[str, Any]]: ...
-    def fetchall(self) -> Sequence[dict[str, Any]]: ...
-
-
-R = TypeVar("R", bound=DictCursor)  # cursor type
-
-
 Conn = _internal.Conn  # For backward compatibility
 
 
-class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
+class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
     lock: threading.Lock
 
     def __init__(
@@ -73,11 +40,11 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, R]):
         self.lock = threading.Lock()
 
     @staticmethod
-    def _get_cursor_from_connection(conn: _internal.C) -> R:
+    def _get_cursor_from_connection(conn: _internal.C) -> _internal.R:
         raise NotImplementedError
 
     @contextmanager
-    def _cursor(self, *, pipeline: bool = False) -> Iterator[R]:
+    def _cursor(self, *, pipeline: bool = False) -> Iterator[_internal.R]:
         """Create a database cursor as a context manager.
 
         Args:
