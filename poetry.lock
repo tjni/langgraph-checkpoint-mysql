@@ -459,13 +459,13 @@ typing-extensions = ">=4.7"
 
 [[package]]
 name = "langgraph"
-version = "0.2.58"
+version = "0.2.61"
 description = "Building stateful, multi-actor applications with LLMs"
 optional = false
 python-versions = "<4.0,>=3.9.0"
 files = [
-    {file = "langgraph-0.2.58-py3-none-any.whl", hash = "sha256:24e3ab580e5406120d59cdc735b2019aa3d6f0c8d7fee1c3a517b4ecd95e3a1c"},
-    {file = "langgraph-0.2.58.tar.gz", hash = "sha256:a2ef9c40d13ef8973797eefe8832802593d24391cf8f81d0e108d0c336fbd4e6"},
+    {file = "langgraph-0.2.61-py3-none-any.whl", hash = "sha256:615f8bd345bf3a6ac3374ce7b4ecc96549301e598eb0f3e933c73b96af229961"},
+    {file = "langgraph-0.2.61.tar.gz", hash = "sha256:355aa6b6b3c19505e8b3c5f7bd813ffd59130d48e6aa017c0edf08273f4f42c2"},
 ]
 
 [package.dependencies]
@@ -1439,4 +1439,4 @@ pymysql = ["pymysql"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9.0,<4.0"
-content-hash = "100b0f112c5c9cf708ece3cf186bc620c820fd4e65e77da9a4d047dc341fd15a"
+content-hash = "cadd58f786f1d683ef3eb069591ea2a64cd4c0be62c7edf6bff424da9c838f3c"

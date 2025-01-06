@@ -14,9 +14,7 @@ from typing import (
     Dict,
     Literal,
     Optional,
-    TypedDict,
     Union,
-    cast,
 )
 
 import httpx
@@ -27,6 +25,7 @@ from langchain_core.runnables import (
 from langchain_core.utils.aiter import aclosing
 from pytest_mock import MockerFixture
 from syrupy import SnapshotAssertion
+from typing_extensions import TypedDict
 
 from langgraph.channels.binop import BinaryOperatorAggregate
 from langgraph.channels.context import Context
