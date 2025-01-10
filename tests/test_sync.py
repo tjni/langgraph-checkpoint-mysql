@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from copy import deepcopy
@@ -403,3 +404,10 @@ def test_write_with_same_checkpoint_ns_updates(saver_name: str) -> None:
         results = list(saver.list({}))
 
         assert len(results) == 1
+
+
+def test_nonnull_migrations() -> None:
+    _leading_comment_remover = re.compile(r"^/\*.*?\*/")
+    for migration in PyMySQLSaver.MIGRATIONS:
+        statement = _leading_comment_remover.sub("", migration).split()[0]
+        assert statement.strip()
