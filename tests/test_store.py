@@ -1,5 +1,6 @@
 # type: ignore
 
+import re
 import time
 from contextlib import closing
 from typing import cast
@@ -344,3 +345,10 @@ class TestPyMySQLStore:
             # Cleanup
             for namespace, key, _ in test_data:
                 store.delete(namespace, key)
+
+
+def test_nonnull_migrations() -> None:
+    _leading_comment_remover = re.compile(r"^/\*.*?\*/")
+    for migration in PyMySQLStore.MIGRATIONS:
+        statement = _leading_comment_remover.sub("", migration).split()[0]
+        assert statement.strip()
