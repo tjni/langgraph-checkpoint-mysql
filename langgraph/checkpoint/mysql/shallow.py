@@ -83,7 +83,7 @@ select
         select json_arrayagg(json_array(bl.channel, bl.type, bl.blob))
         from json_table(
             json_keys(checkpoint, '$.channel_versions'),
-            '$[*]' columns (channel VARCHAR(150) PATH '$')
+            '$[*]' columns (channel VARCHAR(150) CHARACTER SET utf8mb4 PATH '$')
         ) as channels
         inner join checkpoint_blobs bl
             on bl.channel = channels.channel

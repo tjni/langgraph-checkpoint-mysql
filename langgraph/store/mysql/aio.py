@@ -7,7 +7,6 @@ from typing import Any, Callable, Optional, Union, cast
 
 import aiomysql  # type: ignore
 import orjson
-import pymysql
 
 from langgraph.checkpoint.mysql import _ainternal
 from langgraph.store.base import (
@@ -93,10 +92,6 @@ class AIOMySQLStore(AsyncBatchedBaseStore, BaseMySQLStore[_ainternal.Conn]):
             **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
-            # is merged into aiomysql.
-            await conn.set_charset(pymysql.connections.DEFAULT_CHARSET)
-
             yield cls(conn=conn)
 
     async def setup(self) -> None:

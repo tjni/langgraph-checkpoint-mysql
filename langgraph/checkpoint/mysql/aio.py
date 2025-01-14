@@ -6,8 +6,6 @@ from contextlib import asynccontextmanager
 from typing import Any, Optional, cast
 
 import aiomysql  # type: ignore
-import pymysql
-import pymysql.connections
 from langchain_core.runnables import RunnableConfig
 from typing_extensions import Self, override
 
@@ -87,10 +85,6 @@ class AIOMySQLSaver(BaseMySQLSaver):
             **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
-            # is merged into aiomysql.
-            await conn.set_charset(pymysql.connections.DEFAULT_CHARSET)
-
             yield cls(conn=conn, serde=serde)
 
     async def setup(self) -> None:
@@ -494,10 +488,6 @@ class ShallowAIOMySQLSaver(
             **AIOMySQLSaver.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
-            # is merged into aiomysql.
-            await conn.set_charset(pymysql.connections.DEFAULT_CHARSET)
-
             yield cls(conn=conn, serde=serde)
 
     @override
