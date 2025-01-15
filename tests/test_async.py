@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -17,6 +18,7 @@ from langgraph.checkpoint.base import (
 )
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver, ShallowAIOMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
+from langgraph.graph import END, START, MessagesState, StateGraph
 from tests.conftest import DEFAULT_BASE_URI
 
 
@@ -369,3 +371,22 @@ async def test_write_with_same_checkpoint_ns_updates(
         results = [c async for c in saver.alist({})]
 
         assert len(results) == 1
+
+
+@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
+async def test_graph_sync_get_state_history_raises(saver_name: str) -> None:
+    """Regression test for https://github.com/langchain-ai/langgraph/issues/2992"""
+
+    builder = StateGraph(MessagesState)
+    builder.add_node("foo", lambda _: None)
+    builder.add_edge(START, "foo")
+    builder.add_edge("foo", END)
+
+    async with _saver(saver_name) as saver:
+        graph = builder.compile(checkpointer=saver)
+        config: RunnableConfig = {"configurable": {"thread_id": "1"}}
+        await graph.ainvoke({"messages": []}, config)
+
+        # this method should not hang
+        with pytest.raises(asyncio.exceptions.InvalidStateError):
+            next(graph.get_state_history(config))
