@@ -324,6 +324,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         config: RunnableConfig,
         writes: Sequence[tuple[str, Any]],
         task_id: str,
+        task_path: str = "",
     ) -> None:
         """Store intermediate writes linked to a checkpoint.
 
@@ -347,6 +348,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                     config["configurable"]["checkpoint_ns"],
                     config["configurable"]["checkpoint_id"],
                     task_id,
+                    task_path,
                     writes,
                 ),
             )

@@ -71,6 +71,9 @@ MIGRATIONS = [
     """
     CREATE INDEX checkpoint_writes_thread_id_idx ON checkpoint_writes (thread_id);
     """,
+    """
+    ALTER TABLE checkpoint_writes ADD COLUMN task_path VARCHAR(2000) NOT NULL DEFAULT '';
+    """,
 ]
 
 SELECT_SQL = f"""
@@ -99,7 +102,7 @@ select
             and cw.checkpoint_id = checkpoint->>'$.id'
     ) as pending_writes,
     (
-        select json_arrayagg(json_array(cw.task_id, cw.type, cw.blob, cw.idx))
+        select json_arrayagg(json_array(cw.task_path, cw.task_id, cw.type, cw.blob, cw.idx))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
@@ -124,8 +127,8 @@ UPSERT_CHECKPOINTS_SQL = """
 """
 
 UPSERT_CHECKPOINT_WRITES_SQL = """
-    INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, `blob`)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) AS new
+    INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, `blob`)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) AS new
     ON DUPLICATE KEY UPDATE
         channel = new.channel,
         type = new.type,
@@ -133,8 +136,8 @@ UPSERT_CHECKPOINT_WRITES_SQL = """
 """
 
 INSERT_CHECKPOINT_WRITES_SQL = """
-    INSERT IGNORE INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, `blob`)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    INSERT IGNORE INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, `blob`)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 
@@ -423,6 +426,7 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
         config: RunnableConfig,
         writes: Sequence[tuple[str, Any]],
         task_id: str,
+        task_path: str = "",
     ) -> None:
         """Store intermediate writes linked to a checkpoint.
 
@@ -446,6 +450,7 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
                     config["configurable"]["checkpoint_ns"],
                     config["configurable"]["checkpoint_id"],
                     task_id,
+                    task_path,
                     writes,
                 ),
             )
@@ -683,6 +688,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         config: RunnableConfig,
         writes: Sequence[tuple[str, Any]],
         task_id: str,
+        task_path: str = "",
     ) -> None:
         """Store intermediate writes linked to a checkpoint asynchronously.
         This method saves intermediate writes associated with a checkpoint to the database.
@@ -702,6 +708,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
             config["configurable"]["checkpoint_ns"],
             config["configurable"]["checkpoint_id"],
             task_id,
+            task_path,
             writes,
         )
         async with self._cursor(pipeline=True) as cur:
@@ -795,6 +802,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         config: RunnableConfig,
         writes: Sequence[tuple[str, Any]],
         task_id: str,
+        task_path: str = "",
     ) -> None:
         """Store intermediate writes linked to a checkpoint.
         This method saves intermediate writes associated with a checkpoint to the database.
@@ -802,7 +810,8 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
             config (RunnableConfig): Configuration of the related checkpoint.
             writes (Sequence[Tuple[str, Any]]): List of writes to store, each as (channel, value) pair.
             task_id (str): Identifier for the task creating the writes.
+            task_path (str): Path of the task creating the writes.
         """
         return asyncio.run_coroutine_threadsafe(
-            self.aput_writes(config, writes, task_id), self.loop
+            self.aput_writes(config, writes, task_id, task_path), self.loop
         ).result()

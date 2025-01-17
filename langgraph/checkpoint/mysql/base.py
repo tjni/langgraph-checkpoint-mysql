@@ -114,6 +114,9 @@ MIGRATIONS = [
     DROP PRIMARY KEY,
     ADD PRIMARY KEY (thread_id, checkpoint_ns_hash, checkpoint_id, task_id, idx);
     """,
+    """
+    ALTER TABLE checkpoint_writes ADD COLUMN task_path VARCHAR(2000) NOT NULL DEFAULT '';
+    """,
 ]
 
 SELECT_SQL = f"""
@@ -151,7 +154,7 @@ select
             and cw.checkpoint_id = checkpoints.checkpoint_id
     ) as pending_writes,
     (
-        select json_arrayagg(json_array(cw.task_id, cw.type, cw.blob, cw.idx))
+        select json_arrayagg(json_array(cw.task_path, cw.task_id, cw.type, cw.blob, cw.idx))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
@@ -174,8 +177,8 @@ UPSERT_CHECKPOINTS_SQL = """
 """
 
 UPSERT_CHECKPOINT_WRITES_SQL = """
-    INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, `blob`)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) AS new
+    INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, `blob`)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) AS new
     ON DUPLICATE KEY UPDATE
         channel = new.channel,
         type = new.type,
@@ -183,8 +186,8 @@ UPSERT_CHECKPOINT_WRITES_SQL = """
 """
 
 INSERT_CHECKPOINT_WRITES_SQL = """
-    INSERT IGNORE INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, `blob`)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    INSERT IGNORE INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, `blob`)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 
@@ -273,14 +276,16 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
         checkpoint_ns: str,
         checkpoint_id: str,
         task_id: str,
+        task_path: str,
         writes: Sequence[tuple[str, Any]],
-    ) -> list[tuple[str, str, str, str, int, str, str, bytes]]:
+    ) -> list[tuple[str, str, str, str, str, int, str, str, bytes]]:
         return [
             (
                 thread_id,
                 checkpoint_ns,
                 checkpoint_id,
                 task_id,
+                task_path,
                 WRITES_IDX_MAP.get(channel, idx),
                 channel,
                 *self.serde.dumps_typed(value),

@@ -10,7 +10,7 @@ packages = [{ include = "langgraph" }]
 
 [tool.poetry.dependencies]
 python = "^3.9.0,<4.0"
-langgraph-checkpoint = "^2.0.9"
+langgraph-checkpoint = "^2.0.10"
 orjson = ">=3.10.1"
 pymysql =  { version = "^1.1.1", optional = true }
 aiomysql = { version = "^0.2.0", optional = true }
@@ -32,11 +32,11 @@ mypy = "^1.10.0"
 pymysql = "^1.1.1"
 aiomysql = "^0.2.0"
 types-PyMySQL = "^1.1.0"
-langgraph = "0.2.61"
+langgraph = "0.2.63"
 syrupy = "^4.0.2"
 pytest-repeat = "^0.9.3"
 pytest-xdist = {extras = ["psutil"], version = "^3.6.1"}
-sqlalchemy = "^2.0.36"
+sqlalchemy = "^2.0.37"
 
 [tool.pytest.ini_options]
 # --strict-markers will raise errors on unknown marks.
