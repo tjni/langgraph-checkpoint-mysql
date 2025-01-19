@@ -19,8 +19,7 @@ test_mysql_version:
 	@echo "Testing MySQL $(MYSQL_VERSION)"
 	@MYSQL_VERSION=$(MYSQL_VERSION) make start-mysql
 	@poetry run pytest --ignore=langgraph-tests $(TEST) && \
-	poetry run pytest -n auto --dist worksteal langgraph-tests && \
-	LANGGRAPH_FF_SEND_V2=true poetry run pytest -n auto --dist worksteal langgraph-tests || ( \
+	poetry run pytest -n auto --dist worksteal langgraph-tests || ( \
 	  EXIT_CODE=$$?; \
 	  make stop-mysql; \
 	  echo "Finished testing MySQL $(MYSQL_VERSION); Exit code: $$EXIT_CODE"; \
