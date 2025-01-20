@@ -71,11 +71,13 @@ logger = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.anyio
 
-
-@pytest.mark.skipif(
+NEEDS_CONTEXTVARS = pytest.mark.skipif(
     sys.version_info < (3, 11),
     reason="Python 3.11+ is required for async contextvars support",
 )
+
+
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_dynamic_interrupt(checkpointer_name: str) -> None:
     class State(TypedDict):
@@ -249,10 +251,7 @@ async def test_dynamic_interrupt(checkpointer_name: str) -> None:
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_dynamic_interrupt_subgraph(checkpointer_name: str) -> None:
     class SubgraphState(TypedDict):
@@ -443,10 +442,7 @@ async def test_dynamic_interrupt_subgraph(checkpointer_name: str) -> None:
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_copy_checkpoint(checkpointer_name: str) -> None:
     class State(TypedDict):
@@ -650,10 +646,7 @@ async def test_copy_checkpoint(checkpointer_name: str) -> None:
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_node_not_cancelled_on_other_node_interrupted(
     checkpointer_name: str,
@@ -1340,10 +1333,7 @@ async def test_send_sequences(checkpointer_name: str) -> None:
         ]
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_imp_task(checkpointer_name: str) -> None:
     async with awith_checkpointer(checkpointer_name) as checkpointer:
@@ -1386,10 +1376,7 @@ async def test_imp_task(checkpointer_name: str) -> None:
         assert mapper_calls == 2
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_imp_task_cancel(checkpointer_name: str) -> None:
     async with awith_checkpointer(checkpointer_name) as checkpointer:
@@ -1440,10 +1427,7 @@ async def test_imp_task_cancel(checkpointer_name: str) -> None:
         assert mapper_cancels == 2
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_imp_sync_from_async(checkpointer_name: str) -> None:
     async with awith_checkpointer(checkpointer_name) as checkpointer:
@@ -1476,10 +1460,7 @@ async def test_imp_sync_from_async(checkpointer_name: str) -> None:
         ]
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_imp_stream_order(checkpointer_name: str) -> None:
     async with awith_checkpointer(checkpointer_name) as checkpointer:
@@ -4070,10 +4051,7 @@ async def test_parent_command(checkpointer_name: str) -> None:
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_interrupt_subgraph(checkpointer_name: str):
     class State(TypedDict):
@@ -4106,10 +4084,7 @@ async def test_interrupt_subgraph(checkpointer_name: str):
         assert await graph.ainvoke(Command(resume="bar"), thread1)
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_interrupt_multiple(checkpointer_name: str):
     class State(TypedDict):
@@ -4173,10 +4148,7 @@ async def test_interrupt_multiple(checkpointer_name: str):
         ]
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_interrupt_loop(checkpointer_name: str):
     class State(TypedDict):
@@ -4395,10 +4367,7 @@ async def test_command_goto_with_static_breakpoints(checkpointer_name: str) -> N
         assert result == {"foo": "abc|node-1|node-2|node-2"}
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Python 3.11+ is required for async contextvars support",
-)
+@NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_multiple_interrupt_state_persistence(checkpointer_name: str) -> None:
     """Test that state is preserved correctly across multiple interrupts."""
@@ -4495,3 +4464,281 @@ async def test_checkpoint_recovery_async(checkpointer_name: str):
         # Verify the error was recorded in checkpoint
         failed_checkpoint = next(c for c in history if c.tasks and c.tasks[0].error)
         assert "RuntimeError('Simulated failure')" in failed_checkpoint.tasks[0].error
+
+
+@NEEDS_CONTEXTVARS
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
+async def test_multiple_subgraphs(checkpointer_name: str) -> None:
+    class State(TypedDict):
+        a: int
+        b: int
+
+    class Output(TypedDict):
+        result: int
+
+    async with awith_checkpointer(checkpointer_name) as checkpointer:
+        # Define the subgraphs
+        async def add(state):
+            return {"result": state["a"] + state["b"]}
+
+        add_subgraph = (
+            StateGraph(State, output=Output)
+            .add_node(add)
+            .add_edge(START, "add")
+            .compile()
+        )
+
+        async def multiply(state):
+            return {"result": state["a"] * state["b"]}
+
+        multiply_subgraph = (
+            StateGraph(State, output=Output)
+            .add_node(multiply)
+            .add_edge(START, "multiply")
+            .compile()
+        )
+
+        # Test calling the same subgraph multiple times
+        async def call_same_subgraph(state):
+            result = await add_subgraph.ainvoke(state)
+            another_result = await add_subgraph.ainvoke(
+                {"a": result["result"], "b": 10}
+            )
+            return another_result
+
+        parent_call_same_subgraph = (
+            StateGraph(State, output=Output)
+            .add_node(call_same_subgraph)
+            .add_edge(START, "call_same_subgraph")
+            .compile(checkpointer=checkpointer)
+        )
+        config = {"configurable": {"thread_id": "1"}}
+        assert await parent_call_same_subgraph.ainvoke({"a": 2, "b": 3}, config) == {
+            "result": 15
+        }
+
+        # Test calling multiple subgraphs
+        class Output(TypedDict):
+            add_result: int
+            multiply_result: int
+
+        async def call_multiple_subgraphs(state):
+            add_result = await add_subgraph.ainvoke(state)
+            multiply_result = await multiply_subgraph.ainvoke(state)
+            return {
+                "add_result": add_result["result"],
+                "multiply_result": multiply_result["result"],
+            }
+
+        parent_call_multiple_subgraphs = (
+            StateGraph(State, output=Output)
+            .add_node(call_multiple_subgraphs)
+            .add_edge(START, "call_multiple_subgraphs")
+            .compile(checkpointer=checkpointer)
+        )
+        config = {"configurable": {"thread_id": "2"}}
+        assert await parent_call_multiple_subgraphs.ainvoke(
+            {"a": 2, "b": 3}, config
+        ) == {
+            "add_result": 5,
+            "multiply_result": 6,
+        }
+
+
+@NEEDS_CONTEXTVARS
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
+async def test_multiple_subgraphs_functional(checkpointer_name: str) -> None:
+    async with awith_checkpointer(checkpointer_name) as checkpointer:
+        # Define addition subgraph
+        @entrypoint()
+        async def add(inputs):
+            a, b = inputs
+            return a + b
+
+        # Define multiplication subgraph using tasks
+        @task
+        async def multiply_task(a, b):
+            return a * b
+
+        @entrypoint()
+        async def multiply(inputs):
+            return await multiply_task(*inputs)
+
+        # Test calling the same subgraph multiple times
+        @task
+        async def call_same_subgraph(a, b):
+            result = await add.ainvoke([a, b])
+            another_result = await add.ainvoke([result, 10])
+            return another_result
+
+        @entrypoint(checkpointer=checkpointer)
+        async def parent_call_same_subgraph(inputs):
+            return await call_same_subgraph(*inputs)
+
+        config = {"configurable": {"thread_id": "1"}}
+        assert await parent_call_same_subgraph.ainvoke([2, 3], config) == 15
+
+        # Test calling multiple subgraphs
+        @task
+        async def call_multiple_subgraphs(a, b):
+            add_result = await add.ainvoke([a, b])
+            multiply_result = await multiply.ainvoke([a, b])
+            return [add_result, multiply_result]
+
+        @entrypoint(checkpointer=checkpointer)
+        async def parent_call_multiple_subgraphs(inputs):
+            return await call_multiple_subgraphs(*inputs)
+
+        config = {"configurable": {"thread_id": "2"}}
+        assert await parent_call_multiple_subgraphs.ainvoke([2, 3], config) == [5, 6]
+
+
+@NEEDS_CONTEXTVARS
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
+async def test_multiple_subgraphs_mixed(checkpointer_name: str) -> None:
+    class State(TypedDict):
+        a: int
+        b: int
+
+    class Output(TypedDict):
+        result: int
+
+    async with awith_checkpointer(checkpointer_name) as checkpointer:
+        # Define the subgraphs
+        async def add(state):
+            return {"result": state["a"] + state["b"]}
+
+        add_subgraph = (
+            StateGraph(State, output=Output)
+            .add_node(add)
+            .add_edge(START, "add")
+            .compile()
+        )
+
+        async def multiply(state):
+            return {"result": state["a"] * state["b"]}
+
+        multiply_subgraph = (
+            StateGraph(State, output=Output)
+            .add_node(multiply)
+            .add_edge(START, "multiply")
+            .compile()
+        )
+
+        # Test calling the same subgraph multiple times
+        @task
+        async def call_same_subgraph(a, b):
+            result = (await add_subgraph.ainvoke({"a": a, "b": b}))["result"]
+            another_result = (await add_subgraph.ainvoke({"a": result, "b": 10}))[
+                "result"
+            ]
+            return another_result
+
+        @entrypoint(checkpointer=checkpointer)
+        async def parent_call_same_subgraph(inputs):
+            return await call_same_subgraph(*inputs)
+
+        config = {"configurable": {"thread_id": "1"}}
+        assert await parent_call_same_subgraph.ainvoke([2, 3], config) == 15
+
+        # Test calling multiple subgraphs
+        @task
+        async def call_multiple_subgraphs(a, b):
+            add_result = (await add_subgraph.ainvoke({"a": a, "b": b}))["result"]
+            multiply_result = (await multiply_subgraph.ainvoke({"a": a, "b": b}))[
+                "result"
+            ]
+            return [add_result, multiply_result]
+
+        @entrypoint(checkpointer=checkpointer)
+        async def parent_call_multiple_subgraphs(inputs):
+            return await call_multiple_subgraphs(*inputs)
+
+        config = {"configurable": {"thread_id": "2"}}
+        assert await parent_call_multiple_subgraphs.ainvoke([2, 3], config) == [5, 6]
+
+
+@NEEDS_CONTEXTVARS
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
+async def test_multiple_subgraphs_mixed_checkpointer(
+    request: pytest.FixtureRequest, checkpointer_name: str
+) -> None:
+    async with awith_checkpointer(checkpointer_name) as checkpointer:
+
+        class SubgraphState(TypedDict):
+            sub_counter: Annotated[int, operator.add]
+
+        async def subgraph_node(state):
+            return {"sub_counter": 2}
+
+        sub_graph_1 = (
+            StateGraph(SubgraphState)
+            .add_node(subgraph_node)
+            .add_edge(START, "subgraph_node")
+            .compile(checkpointer=True)
+        )
+
+        class OtherSubgraphState(TypedDict):
+            other_sub_counter: Annotated[int, operator.add]
+
+        async def other_subgraph_node(state):
+            return {"other_sub_counter": 3}
+
+        sub_graph_2 = (
+            StateGraph(OtherSubgraphState)
+            .add_node(other_subgraph_node)
+            .add_edge(START, "other_subgraph_node")
+            .compile()
+        )
+
+        class ParentState(TypedDict):
+            parent_counter: int
+
+        async def parent_node(state):
+            result = await sub_graph_1.ainvoke({"sub_counter": state["parent_counter"]})
+            other_result = await sub_graph_2.ainvoke(
+                {"other_sub_counter": result["sub_counter"]}
+            )
+            return {"parent_counter": other_result["other_sub_counter"]}
+
+        parent_graph = (
+            StateGraph(ParentState)
+            .add_node(parent_node)
+            .add_edge(START, "parent_node")
+            .compile(checkpointer=checkpointer)
+        )
+
+        config = {"configurable": {"thread_id": "1"}}
+        assert await parent_graph.ainvoke({"parent_counter": 0}, config) == {
+            "parent_counter": 5
+        }
+        assert await parent_graph.ainvoke({"parent_counter": 0}, config) == {
+            "parent_counter": 7
+        }
+        config = {"configurable": {"thread_id": "2"}}
+        assert [
+            c
+            async for c in parent_graph.astream(
+                {"parent_counter": 0}, config, subgraphs=True, stream_mode="updates"
+            )
+        ] == [
+            (("parent_node",), {"subgraph_node": {"sub_counter": 2}}),
+            (
+                (AnyStr("parent_node:"), "1"),
+                {"other_subgraph_node": {"other_sub_counter": 3}},
+            ),
+            ((), {"parent_node": {"parent_counter": 5}}),
+        ]
+        assert [
+            c
+            async for c in parent_graph.astream(
+                {"parent_counter": 0}, config, subgraphs=True, stream_mode="updates"
+            )
+        ] == [
+            (("parent_node",), {"subgraph_node": {"sub_counter": 2}}),
+            (
+                (AnyStr("parent_node:"), "1"),
+                {"other_subgraph_node": {"other_sub_counter": 3}},
+            ),
+            ((), {"parent_node": {"parent_counter": 7}}),
+        ]

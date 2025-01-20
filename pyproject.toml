@@ -32,7 +32,7 @@ mypy = "^1.10.0"
 pymysql = "^1.1.1"
 aiomysql = "^0.2.0"
 types-PyMySQL = "^1.1.0"
-langgraph = "0.2.63"
+langgraph = "0.2.64"
 syrupy = "^4.0.2"
 pytest-repeat = "^0.9.3"
 pytest-xdist = {extras = ["psutil"], version = "^3.6.1"}
