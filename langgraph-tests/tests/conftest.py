@@ -1,5 +1,5 @@
-from contextlib import asynccontextmanager, closing
-from typing import AsyncIterator, Optional, cast
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Optional
 from uuid import UUID, uuid4
 
 import aiomysql  # type: ignore
@@ -9,7 +9,7 @@ import pytest
 from langchain_core import __version__ as core_version
 from packaging import version
 from pytest_mock import MockerFixture
-from sqlalchemy import Pool, create_pool_from_url
+from sqlalchemy import Engine, create_engine
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver, ShallowAIOMySQLSaver
@@ -28,9 +28,9 @@ IS_LANGCHAIN_CORE_030_OR_GREATER = version.parse(core_version) >= version.parse(
 SHOULD_CHECK_SNAPSHOTS = IS_LANGCHAIN_CORE_030_OR_GREATER
 
 
-def get_pymysql_sqlalchemy_pool(uri: str) -> Pool:
+def get_pymysql_sqlalchemy_engine(uri: str) -> Engine:
     updated_uri = uri.replace("mysql://", "mysql+pymysql://")
-    return create_pool_from_url(updated_uri)
+    return create_engine(updated_uri)
 
 
 @pytest.fixture
@@ -91,7 +91,7 @@ def checkpointer_pymysql_shallow():
 
 
 @pytest.fixture(scope="function")
-def checkpointer_pymysql_sqlalchemy_pool():
+def checkpointer_pymysql_pool():
     database = f"test_{uuid4().hex[:16]}"
 
     # create unique db
@@ -99,31 +99,8 @@ def checkpointer_pymysql_sqlalchemy_pool():
         with conn.cursor() as cursor:
             cursor.execute(f"CREATE DATABASE {database}")
     try:
-        checkpointer = PyMySQLSaver(get_pymysql_sqlalchemy_pool(DEFAULT_MYSQL_URI + database))
-        checkpointer.setup()
-        yield checkpointer
-    finally:
-        # drop unique db
-        with pymysql.connect(**PyMySQLSaver.parse_conn_string(DEFAULT_MYSQL_URI), autocommit=True) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(f"DROP DATABASE {database}")
-
-
-@pytest.fixture(scope="function")
-def checkpointer_pymysql_callable():
-    database = f"test_{uuid4().hex[:16]}"
-
-    # create unique db
-    with pymysql.connect(**PyMySQLSaver.parse_conn_string(DEFAULT_MYSQL_URI), autocommit=True) as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(f"CREATE DATABASE {database}")
-    try:
-        pool = get_pymysql_sqlalchemy_pool(DEFAULT_MYSQL_URI + database)
-
-        def callable() -> pymysql.Connection:
-            return cast(pymysql.Connection, closing(pool.connect()))
-
-        checkpointer = PyMySQLSaver(callable)
+        pool = get_pymysql_sqlalchemy_engine(DEFAULT_MYSQL_URI + database)
+        checkpointer = PyMySQLSaver(pool.raw_connection)
         checkpointer.setup()
         yield checkpointer
     finally:
@@ -255,7 +232,7 @@ def store_pymysql():
 
 
 @pytest.fixture(scope="function")
-def store_pymysql_sqlalchemy_pool():
+def store_pymysql_pool():
     database = f"test_{uuid4().hex[:16]}"
 
     # create unique db
@@ -264,29 +241,8 @@ def store_pymysql_sqlalchemy_pool():
             cursor.execute(f"CREATE DATABASE {database}")
     try:
         # yield store
-        store = PyMySQLStore(get_pymysql_sqlalchemy_pool(DEFAULT_MYSQL_URI + database))
-        store.setup()
-        yield store
-    finally:
-        # drop unique db
-        with pymysql.connect(**PyMySQLStore.parse_conn_string(DEFAULT_MYSQL_URI), autocommit=True) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(f"DROP DATABASE {database}")
-
-
-@pytest.fixture(scope="function")
-def store_pymysql_callable():
-    database = f"test_{uuid4().hex[:16]}"
-
-    # create unique db
-    with pymysql.connect(**PyMySQLStore.parse_conn_string(DEFAULT_MYSQL_URI), autocommit=True) as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(f"CREATE DATABASE {database}")
-    try:
-        # yield store
-        pool = get_pymysql_sqlalchemy_pool(DEFAULT_MYSQL_URI + database)
-        callable = lambda: cast(pymysql.Connection, closing(pool.connect()))
-        store = PyMySQLStore(callable)
+        engine = get_pymysql_sqlalchemy_engine(DEFAULT_MYSQL_URI + database)
+        store = PyMySQLStore(engine.raw_connection)
         store.setup()
         yield store
     finally:
@@ -386,8 +342,7 @@ async def awith_store(store_name: Optional[str]) -> AsyncIterator[BaseStore]:
 SHALLOW_CHECKPOINTERS_SYNC = ["pymysql_shallow"]
 REGULAR_CHECKPOINTERS_SYNC = [
     "pymysql",
-    "pymysql_sqlalchemy_pool",
-    "pymysql_callable"
+    "pymysql_pool",
 ]
 ALL_CHECKPOINTERS_SYNC = [
     *REGULAR_CHECKPOINTERS_SYNC,
@@ -399,5 +354,5 @@ ALL_CHECKPOINTERS_ASYNC = [
     *REGULAR_CHECKPOINTERS_ASYNC,
     *SHALLOW_CHECKPOINTERS_ASYNC,
 ]
-ALL_STORES_SYNC = ["pymysql", "pymysql_sqlalchemy_pool", "pymysql_callable"]
+ALL_STORES_SYNC = ["pymysql", "pymysql_pool"]
 ALL_STORES_ASYNC = ["aiomysql", "aiomysql_pool"]

@@ -2,8 +2,6 @@
 
 import re
 import time
-from contextlib import closing
-from typing import cast
 from uuid import uuid4
 
 import pymysql
@@ -18,10 +16,21 @@ from langgraph.store.base import (
     SearchOp,
 )
 from langgraph.store.mysql import PyMySQLStore
-from tests.conftest import DEFAULT_BASE_URI, DEFAULT_URI, get_pymysql_sqlalchemy_pool
+from tests.conftest import (
+    DEFAULT_BASE_URI,
+    DEFAULT_URI,
+    get_pymysql_sqlalchemy_engine,
+    get_pymysql_sqlalchemy_pool,
+)
+
+STORES = [
+    "default",
+    "sqlalchemy_engine",
+    "sqlalchemy_pool",
+]
 
 
-@pytest.fixture(scope="function", params=["default", "sqlalchemy_pool", "callable"])
+@pytest.fixture(scope="function", params=STORES)
 def store(request) -> PyMySQLStore:
     database = f"test_{uuid4().hex[:16]}"
 
@@ -35,15 +44,12 @@ def store(request) -> PyMySQLStore:
         with PyMySQLStore.from_conn_string(DEFAULT_BASE_URI + database) as store:
             store.setup()
 
-        if request.param == "sqlalchemy_pool":
-            yield PyMySQLStore(get_pymysql_sqlalchemy_pool(DEFAULT_BASE_URI + database))
-        elif request.param == "callable":
+        if request.param == "sqlalchemy_engine":
+            engine = get_pymysql_sqlalchemy_engine(DEFAULT_BASE_URI + database)
+            yield PyMySQLStore(engine.raw_connection)
+        elif request.param == "sqlalchemy_pool":
             pool = get_pymysql_sqlalchemy_pool(DEFAULT_BASE_URI + database)
-
-            def callable() -> pymysql.Connection:
-                return cast(pymysql.Connection, closing(pool.connect()))
-
-            yield PyMySQLStore(callable)
+            yield PyMySQLStore(pool.connect)
         else:  # default
             with PyMySQLStore.from_conn_string(DEFAULT_BASE_URI + database) as store:
                 yield store
