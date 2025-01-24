@@ -6649,6 +6649,9 @@ def test_send_dedupe_on_resume(
             setattr(self, "__name__", name)
 
         def __call__(self, state):
+            time.sleep(0)
+            # sleep makes it more likely to trigger edge case where 1st task
+            # finishes before 2nd is registered in futures dict
             self.ticks += 1
             update = (
                 [self.name]

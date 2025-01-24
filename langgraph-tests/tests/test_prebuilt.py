@@ -20,13 +20,16 @@ from langchain_core.messages import (
     ToolCall,
 )
 from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.runnables import Runnable
+from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.prebuilt import (
     create_react_agent,
+)
+from langgraph.prebuilt.chat_agent_executor import (
+    StructuredResponse,
 )
 from tests.conftest import (
     ALL_CHECKPOINTERS_ASYNC,
@@ -40,6 +43,7 @@ pytestmark = pytest.mark.anyio
 
 class FakeToolCallingModel(BaseChatModel):
     tool_calls: Optional[list[list[ToolCall]]] = None
+    structured_response: Optional[StructuredResponse] = None
     index: int = 0
     tool_style: Literal["openai", "anthropic"] = "openai"
 
@@ -66,6 +70,14 @@ class FakeToolCallingModel(BaseChatModel):
     @property
     def _llm_type(self) -> str:
         return "fake-tool-call-model"
+
+    def with_structured_output(
+        self, schema: Type[BaseModel]
+    ) -> Runnable[LanguageModelInput, StructuredResponse]:
+        if self.structured_response is None:
+            raise ValueError("Structured response is not set")
+
+        return RunnableLambda(lambda x: self.structured_response)
 
     def bind_tools(
         self,
