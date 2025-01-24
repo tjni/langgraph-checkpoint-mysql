@@ -11,17 +11,24 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        mysql-version:
-          - "9"
-          - "8"
-          - "8.0.19"
+        database:
+          - db: "mysql"
+            version: "9"
+          - db: "mysql"
+            version: "8"
+          - db: "mysql"
+            version: "8.0.19"
+          - db: "mariadb"
+            version: "11"
+          - db: "mariadb"
+            version: "10"
         python-version:
           - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
 
-    name: "test python ${{ matrix.python-version }} | mysql ${{ matrix.mysql-version }}"
+    name: "test python ${{ matrix.python-version }} | ${{ matrix.database.db }} ${{ matrix.database.version }}"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }} + Poetry ${{ env.POETRY_VERSION }}
@@ -36,12 +43,21 @@ jobs:
         run: |
           poetry install --with dev
 
-      - name: Run tests
+      - name: Run MySQL tests
+        if: ${{ matrix.database.db == 'mysql' }}
         shell: bash
         env:
-          MYSQL_VERSIONS: ${{ matrix.mysql-version }}
+          MYSQL_VERSIONS: ${{ matrix.database.version }}
         run: |
           make test
+
+      - name: Run MariaDB tests
+        if: ${{ matrix.database.db == 'mariadb' }}
+        shell: bash
+        env:
+          MARIADB_VERSIONS: ${{ matrix.database.version }}
+        run: |
+          make test-mariadb
 
       - name: Ensure the tests did not create any additional files
         shell: bash

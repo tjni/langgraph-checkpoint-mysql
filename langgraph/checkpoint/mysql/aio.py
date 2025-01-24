@@ -134,7 +134,7 @@ class AIOMySQLSaver(BaseMySQLSaver):
             AsyncIterator[CheckpointTuple]: An asynchronous iterator of matching checkpoint tuples.
         """
         where, args = self._search_where(config, filter, before)
-        query = self.SELECT_SQL + where + " ORDER BY checkpoint_id DESC"
+        query = self._select_sql(where) + " ORDER BY checkpoint_id DESC"
         if limit:
             query += f" LIMIT {limit}"
         # if we change this to use .stream() we need to make sure to close the cursor
@@ -191,15 +191,25 @@ class AIOMySQLSaver(BaseMySQLSaver):
         checkpoint_id = get_checkpoint_id(config)
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
         if checkpoint_id:
-            args: tuple[Any, ...] = (thread_id, checkpoint_ns, checkpoint_id)
-            where = "WHERE thread_id = %s AND checkpoint_ns_hash = UNHEX(MD5(%s)) AND checkpoint_id = %s"
+            args = {
+                "thread_id": thread_id,
+                "checkpoint_ns": checkpoint_ns,
+                "checkpoint_id": checkpoint_id,
+            }
+            where = "WHERE thread_id = %(thread_id)s AND checkpoint_ns_hash = UNHEX(MD5(%(checkpoint_ns)s)) AND checkpoint_id = %(checkpoint_id)s"
         else:
-            args = (thread_id, checkpoint_ns)
-            where = "WHERE thread_id = %s AND checkpoint_ns_hash = UNHEX(MD5(%s)) ORDER BY checkpoint_id DESC LIMIT 1"
+            args = {
+                "thread_id": thread_id,
+                "checkpoint_ns": checkpoint_ns,
+            }
+            where = "WHERE thread_id = %(thread_id)s AND checkpoint_ns_hash = UNHEX(MD5(%(checkpoint_ns)s))"
 
+        query = self._select_sql(where)
+        if not checkpoint_id:
+            query += " ORDER BY checkpoint_id DESC LIMIT 1"
         async with self._cursor() as cur:
             await cur.execute(
-                self.SELECT_SQL + where,
+                query,
                 args,
             )
 
@@ -288,6 +298,7 @@ class AIOMySQLSaver(BaseMySQLSaver):
                 self.UPSERT_CHECKPOINTS_SQL,
                 (
                     thread_id,
+                    checkpoint_ns,
                     checkpoint_ns,
                     checkpoint["id"],
                     checkpoint_id,

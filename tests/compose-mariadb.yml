@@ -1,0 +1,24 @@
+services:
+  mariadb-test:
+    image: mariadb:${MARIADB_VERSION:-11}
+    ports:
+      - "5441:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: mysql
+      MARIADB_DATABASE: mysql
+      MARIADB_USER: mysql
+      MARIADB_PASSWORD: mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 10s
+      timeout: 1s
+      retries: 5
+      interval: 60s
+      start_interval: 1s
+    configs:
+      - source: init.sql
+        target: /docker-entrypoint-initdb.d/init.sql
+configs:
+  init.sql:
+    content: |
+      GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'%';

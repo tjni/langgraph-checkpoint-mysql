@@ -20,6 +20,7 @@ from langgraph.checkpoint.mysql.utils import (
     deserialize_channel_values,
     deserialize_pending_sends,
     deserialize_pending_writes,
+    mysql_mariadb_branch,
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
 from langgraph.checkpoint.serde.types import TASKS
@@ -32,28 +33,37 @@ MIGRATIONS = [
     """CREATE TABLE IF NOT EXISTS checkpoint_migrations (
     v INTEGER PRIMARY KEY
 );""",
-    """CREATE TABLE IF NOT EXISTS checkpoints (
+    f"""CREATE TABLE IF NOT EXISTS checkpoints (
     thread_id VARCHAR(150) NOT NULL,
     checkpoint_ns VARCHAR(2000) NOT NULL DEFAULT '',
-    checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,
+    {mysql_mariadb_branch(
+        "checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
+        "checkpoint_ns_hash BINARY(16),",
+    )}
     type VARCHAR(150),
     checkpoint JSON NOT NULL,
-    metadata JSON NOT NULL DEFAULT ('{}'),
+    metadata JSON NOT NULL DEFAULT ('{{}}'),
     PRIMARY KEY (thread_id, checkpoint_ns_hash)
 );""",
-    """CREATE TABLE IF NOT EXISTS checkpoint_blobs (
+    f"""CREATE TABLE IF NOT EXISTS checkpoint_blobs (
     thread_id VARCHAR(150) NOT NULL,
     checkpoint_ns VARCHAR(2000) NOT NULL DEFAULT '',
-    checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,
+    {mysql_mariadb_branch(
+        "checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
+        "checkpoint_ns_hash BINARY(16),",
+    )}
     channel VARCHAR(150) NOT NULL,
     type VARCHAR(150) NOT NULL,
     `blob` LONGBLOB,
     PRIMARY KEY (thread_id, checkpoint_ns_hash, channel)
 );""",
-    """CREATE TABLE IF NOT EXISTS checkpoint_writes (
+    f"""CREATE TABLE IF NOT EXISTS checkpoint_writes (
     thread_id VARCHAR(150) NOT NULL,
     checkpoint_ns VARCHAR(2000) NOT NULL DEFAULT '',
-    checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,
+    {mysql_mariadb_branch(
+        "checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
+        "checkpoint_ns_hash BINARY(16),",
+    )}
     checkpoint_id VARCHAR(150) NOT NULL,
     task_id VARCHAR(150) NOT NULL,
     idx INTEGER NOT NULL,
@@ -74,6 +84,20 @@ MIGRATIONS = [
     """
     ALTER TABLE checkpoint_writes ADD COLUMN task_path VARCHAR(2000) NOT NULL DEFAULT '';
     """,
+    # No longer use STORED generated columns, because MariaDB does not support
+    # using them in primary keys.
+    #
+    #  https://github.com/tjni/langgraph-checkpoint-mysql/issues/51
+    #
+    """
+    ALTER TABLE checkpoints MODIFY COLUMN checkpoint_ns_hash BINARY(16);
+    """,
+    """
+    ALTER TABLE checkpoint_blobs MODIFY COLUMN checkpoint_ns_hash BINARY(16);
+    """,
+    """
+    ALTER TABLE checkpoint_writes MODIFY COLUMN checkpoint_ns_hash BINARY(16);
+    """,
 ]
 
 SELECT_SQL = f"""
@@ -83,7 +107,11 @@ select
     checkpoint_ns,
     metadata,
     (
-        select json_arrayagg(json_array(bl.channel, bl.type, bl.blob))
+        select json_arrayagg(json_array(
+            bl.channel,
+            bl.type,
+            {mysql_mariadb_branch("bl.blob", "to_base64(bl.blob)")}
+        ))
         from json_table(
             json_keys(checkpoint, '$.channel_versions'),
             '$[*]' columns (channel VARCHAR(150) CHARACTER SET utf8mb4 PATH '$')
@@ -95,14 +123,26 @@ select
     ) as channel_values,
     (
         select
-        json_arrayagg(json_array(cw.task_id, cw.channel, cw.type, cw.blob, cw.idx))
+        json_arrayagg(json_array(
+            cw.task_id,
+            cw.channel,
+            cw.type,
+            {mysql_mariadb_branch("cw.blob", "to_base64(cw.blob)")},
+            cw.idx
+        ))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
-            and cw.checkpoint_id = checkpoint->>'$.id'
+            and cw.checkpoint_id = json_unquote(json_extract(checkpoint, '$.id'))
     ) as pending_writes,
     (
-        select json_arrayagg(json_array(cw.task_path, cw.task_id, cw.type, cw.blob, cw.idx))
+        select json_arrayagg(json_array(
+            cw.task_path,
+            cw.task_id,
+            cw.type,
+            {mysql_mariadb_branch("cw.blob", "to_base64(cw.blob)")},
+            cw.idx
+        ))
         from checkpoint_writes cw
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
@@ -110,34 +150,34 @@ select
     ) as pending_sends
 from checkpoints """
 
-UPSERT_CHECKPOINT_BLOBS_SQL = """
-    INSERT INTO checkpoint_blobs (thread_id, checkpoint_ns, channel, type, `blob`)
-    VALUES (%s, %s, %s, %s, %s) AS new
+UPSERT_CHECKPOINT_BLOBS_SQL = f"""
+    INSERT INTO checkpoint_blobs (thread_id, checkpoint_ns, checkpoint_ns_hash, channel, type, `blob`)
+    VALUES (%s, %s, UNHEX(MD5(%s)), %s, %s, %s) {mysql_mariadb_branch("AS new", "")}
     ON DUPLICATE KEY UPDATE
-        type = new.type,
-        `blob` = new.blob;
+        type = {mysql_mariadb_branch("new.type", "VALUE(type)")},
+        `blob` = {mysql_mariadb_branch("new.blob", "VALUE(`blob`)")};
 """
 
-UPSERT_CHECKPOINTS_SQL = """
-    INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint, metadata)
-    VALUES (%s, %s, %s, %s) AS new
+UPSERT_CHECKPOINTS_SQL = f"""
+    INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_ns_hash, checkpoint, metadata)
+    VALUES (%s, %s, UNHEX(MD5(%s)), %s, %s) {mysql_mariadb_branch("AS new", "")}
     ON DUPLICATE KEY UPDATE
-        checkpoint = new.checkpoint,
-        metadata = new.metadata;
+        checkpoint = {mysql_mariadb_branch("new.checkpoint", "VALUE(checkpoint)")},
+        metadata = {mysql_mariadb_branch("new.metadata", "VALUE(metadata)")};
 """
 
-UPSERT_CHECKPOINT_WRITES_SQL = """
-    INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, `blob`)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) AS new
+UPSERT_CHECKPOINT_WRITES_SQL = f"""
+    INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_ns_hash, checkpoint_id, task_id, task_path, idx, channel, type, `blob`)
+    VALUES (%s, %s, UNHEX(MD5(%s)), %s, %s, %s, %s, %s, %s, %s) {mysql_mariadb_branch("AS new", "")}
     ON DUPLICATE KEY UPDATE
-        channel = new.channel,
-        type = new.type,
-        `blob` = new.blob;
+        channel = {mysql_mariadb_branch("new.channel", "VALUE(channel)")},
+        type = {mysql_mariadb_branch("new.type", "VALUE(type)")},
+        `blob` = {mysql_mariadb_branch("new.blob", "VALUE(`blob`)")};
 """
 
 INSERT_CHECKPOINT_WRITES_SQL = """
-    INSERT IGNORE INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, `blob`)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    INSERT IGNORE INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_ns_hash, checkpoint_id, task_id, task_path, idx, channel, type, `blob`)
+    VALUES (%s, %s, UNHEX(MD5(%s)), %s, %s, %s, %s, %s, %s, %s)
 """
 
 
@@ -147,13 +187,14 @@ def _dump_blobs(
     checkpoint_ns: str,
     values: dict[str, Any],
     versions: ChannelVersions,
-) -> list[tuple[str, str, str, str, Optional[bytes]]]:
+) -> list[tuple[str, str, str, str, str, Optional[bytes]]]:
     if not versions:
         return []
 
     return [
         (
             thread_id,
+            checkpoint_ns,
             checkpoint_ns,
             k,
             *(serde.dumps_typed(values[k]) if k in values else ("empty", None)),
@@ -414,6 +455,7 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
                 self.UPSERT_CHECKPOINTS_SQL,
                 (
                     thread_id,
+                    checkpoint_ns,
                     checkpoint_ns,
                     json.dumps(self._dump_checkpoint(copy)),
                     self._dump_metadata(metadata),
@@ -676,6 +718,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
                 self.UPSERT_CHECKPOINTS_SQL,
                 (
                     thread_id,
+                    checkpoint_ns,
                     checkpoint_ns,
                     json.dumps(self._dump_checkpoint(copy)),
                     self._dump_metadata(metadata),

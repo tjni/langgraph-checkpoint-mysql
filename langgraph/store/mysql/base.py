@@ -24,6 +24,7 @@ from typing_extensions import TypedDict
 
 from langgraph.checkpoint.mysql import _ainternal as _ainternal
 from langgraph.checkpoint.mysql import _internal as _internal
+from langgraph.checkpoint.mysql.utils import mysql_mariadb_branch
 from langgraph.store.base import (
     BaseStore,
     GetOp,
@@ -152,9 +153,10 @@ class BaseMySQLStore(Generic[C]):
             values_str = ",".join(values)
             query = f"""
                 INSERT INTO store (prefix, `key`, value, created_at, updated_at)
-                VALUES {values_str} AS new
+                VALUES {values_str} {mysql_mariadb_branch("AS new", "")}
                 ON DUPLICATE KEY UPDATE
-                value = new.value, updated_at = CURRENT_TIMESTAMP
+                    value = {mysql_mariadb_branch("new.value", "VALUE(value)")},
+                    updated_at = CURRENT_TIMESTAMP
             """
             queries.append((query, insertion_params))
 
@@ -179,8 +181,20 @@ class BaseMySQLStore(Generic[C]):
                             filter_conditions.append(condition)
                             filter_params.extend(filter_params_)
                     else:
+                        # The MySQL query fragment is:
+                        #
+                        #  json_extract(value, concat('$.', %s)) = CAST(%s AS JSON)
+                        #
+                        # The MariaDB query fragment is:
+                        #
+                        #  json_equals(json_extract(value, concat('$.', %s)), json_extract(%s, '$'))
+                        #
                         filter_conditions.append(
-                            "json_extract(value, concat('$.', %s)) = CAST(%s AS JSON)"
+                            mysql_mariadb_branch("", "json_equals(")
+                            + "json_extract(value, concat('$.', %s))"
+                            + mysql_mariadb_branch(" = CAST(", ", json_extract(")
+                            + "%s"
+                            + mysql_mariadb_branch(" AS JSON)", ", '$'))")
                         )
                         filter_params.extend([key, json.dumps(value)])
 
