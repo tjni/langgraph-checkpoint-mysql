@@ -2,14 +2,14 @@ import base64
 import json
 from typing import NamedTuple, Optional
 
-# When MySQL returns a blob in a JSON array, it is base64 encoded and a prefix
-# of "base64:type251:" attached to it.
-MySQLBase64Blob = str
+Base64Blob = str
 
 
-def decode_base64_blob(base64_blob: MySQLBase64Blob) -> bytes:
-    _, data = base64_blob.rsplit(":", 1)
-    return base64.b64decode(data)
+def decode_base64_blob(base64_blob: Base64Blob) -> bytes:
+    # When MySQL returns a blob in a JSON array, it is base64 encoded and a prefix
+    # of "base64:type251:" attached to it.
+    parts = base64_blob.rsplit(":", 1)
+    return base64.b64decode(parts[-1])
 
 
 class MySQLPendingWrite(NamedTuple):
@@ -20,7 +20,7 @@ class MySQLPendingWrite(NamedTuple):
     task_id: str
     channel: str
     type_: str
-    blob: MySQLBase64Blob
+    blob: Base64Blob
     idx: int
 
 
@@ -40,7 +40,7 @@ class MySQLPendingSend(NamedTuple):
     task_path: str
     task_id: str
     type_: str
-    blob: MySQLBase64Blob
+    blob: Base64Blob
     idx: int
 
 
@@ -59,7 +59,7 @@ def deserialize_pending_sends(value: str) -> list[tuple[str, bytes]]:
 class MySQLChannelValue(NamedTuple):
     channel: str
     type_: str
-    blob: Optional[MySQLBase64Blob]
+    blob: Optional[Base64Blob]
 
 
 def deserialize_channel_values(value: str) -> list[tuple[str, str, Optional[bytes]]]:
@@ -72,3 +72,9 @@ def deserialize_channel_values(value: str) -> list[tuple[str, str, Optional[byte
         (db.channel, db.type_, decode_base64_blob(db.blob) if db.blob else None)
         for db in values
     ]
+
+
+def mysql_mariadb_branch(mysql_fragment: str, mariadb_fragment: str) -> str:
+    # MariaDB ignores MySQL conditional comments with version numbers between
+    # 500700 and 999999. We can use this to our advantage.
+    return f"/*!50700 {mysql_fragment}*//*M! {mariadb_fragment}*/"

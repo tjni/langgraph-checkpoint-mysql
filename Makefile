@@ -35,6 +35,37 @@ test:
 	done
 	@echo "All MySQL versions tested successfully"
 
+start-mariadb:
+	MARIADB_VERSION=$(MARIADB_VERSION) docker compose -f tests/compose-mariadb.yml up -V --force-recreate --wait || ( \
+    echo "Failed to start MariaDB, printing logs..."; \
+		docker compose -f tests/compose-mariadb.yml logs; \
+		exit 1 \
+  )
+
+stop-mariadb:
+	docker compose -f tests/compose-mariadb.yml down --remove-orphans -v
+
+MARIADB_VERSIONS ?= 10
+test_mariadb_version:
+	@echo "Testing MariaDB $(MARIADB_VERSION)"
+	@MARIADB_VERSION=$(MARIADB_VERSION) make start-mariadb
+	@poetry run pytest --ignore=langgraph-tests $(TEST) && \
+	poetry run pytest -n auto --dist worksteal langgraph-tests || ( \
+	  EXIT_CODE=$$?; \
+	  make stop-mariadb; \
+	  echo "Finished testing MariaDB $(MARIADB_VERSION); Exit code: $$EXIT_CODE"; \
+	  exit $$EXIT_CODE \
+	)
+
+test-mariadb:
+	@for version in $(MARIADB_VERSIONS); do \
+		if ! make test_mariadb_version MARIADB_VERSION=$$version; then \
+			echo "Test failed for MariaDB $$version"; \
+			exit 1; \
+		fi; \
+	done
+	@echo "All MariaDB versions tested successfully"
+
 TEST ?= .
 test_watch:
 	MYSQL_VERSION=$(MYSQL_VERSION) make start-mysql; \
