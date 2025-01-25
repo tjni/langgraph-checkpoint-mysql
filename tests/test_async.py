@@ -6,6 +6,7 @@ from typing import Any, Union
 from uuid import uuid4
 
 import aiomysql  # type: ignore
+import asyncmy  # type: ignore
 import pytest
 from langchain_core.runnables import RunnableConfig
 
@@ -17,13 +18,25 @@ from langgraph.checkpoint.base import (
     empty_checkpoint,
 )
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver, ShallowAIOMySQLSaver
+from langgraph.checkpoint.mysql.aio_base import BaseAsyncMySQLSaver
+from langgraph.checkpoint.mysql.asyncmy import AsyncMySaver, ShallowAsyncMySaver
+from langgraph.checkpoint.mysql.shallow import BaseShallowAsyncMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
 from langgraph.graph import END, START, MessagesState, StateGraph
 from tests.conftest import DEFAULT_BASE_URI
 
+SAVERS = [
+    "aiomysql",
+    "aiomysql_pool",
+    "aiomysql_shallow",
+    "asyncmy",
+    "asyncmy_pool",
+    "asyncmy_shallow",
+]
+
 
 @asynccontextmanager
-async def _pool_saver() -> AsyncIterator[AIOMySQLSaver]:
+async def _aiomysql_pool_saver() -> AsyncIterator[AIOMySQLSaver]:
     """Fixture for pool mode testing."""
     database = f"test_{uuid4().hex[:16]}"
     # create unique db
@@ -53,7 +66,7 @@ async def _pool_saver() -> AsyncIterator[AIOMySQLSaver]:
 
 
 @asynccontextmanager
-async def _base_saver() -> AsyncIterator[AIOMySQLSaver]:
+async def _aiomysql_saver() -> AsyncIterator[AIOMySQLSaver]:
     """Fixture for regular connection mode testing."""
     database = f"test_{uuid4().hex[:16]}"
     # create unique db
@@ -79,7 +92,7 @@ async def _base_saver() -> AsyncIterator[AIOMySQLSaver]:
 
 
 @asynccontextmanager
-async def _shallow_saver() -> AsyncIterator[ShallowAIOMySQLSaver]:
+async def _aiomysql_shallow_saver() -> AsyncIterator[ShallowAIOMySQLSaver]:
     """Fixture for shallow connection mode testing."""
     database = f"test_{uuid4().hex[:16]}"
     # create unique db
@@ -105,17 +118,108 @@ async def _shallow_saver() -> AsyncIterator[ShallowAIOMySQLSaver]:
 
 
 @asynccontextmanager
+async def _asyncmy_pool_saver() -> AsyncIterator[AsyncMySaver]:
+    """Fixture for pool mode testing."""
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    async with await asyncmy.connect(
+        **AsyncMySaver.parse_conn_string(DEFAULT_BASE_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        # yield checkpointer
+        async with asyncmy.create_pool(
+            **AsyncMySaver.parse_conn_string(DEFAULT_BASE_URI + database),
+            maxsize=10,
+            autocommit=True,
+        ) as pool:
+            checkpointer = AsyncMySaver(pool)
+            await checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        async with await asyncmy.connect(
+            **AsyncMySaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
+async def _asyncmy_saver() -> AsyncIterator[AsyncMySaver]:
+    """Fixture for regular connection mode testing."""
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    async with await asyncmy.connect(
+        **AsyncMySaver.parse_conn_string(DEFAULT_BASE_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        async with AsyncMySaver.from_conn_string(
+            DEFAULT_BASE_URI + database
+        ) as checkpointer:
+            await checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        async with await asyncmy.connect(
+            **AsyncMySaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
+async def _asyncmy_shallow_saver() -> AsyncIterator[ShallowAsyncMySaver]:
+    """Fixture for shallow connection mode testing."""
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    async with await asyncmy.connect(
+        **AsyncMySaver.parse_conn_string(DEFAULT_BASE_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        async with ShallowAsyncMySaver.from_conn_string(
+            DEFAULT_BASE_URI + database
+        ) as checkpointer:
+            await checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        async with await asyncmy.connect(
+            **AsyncMySaver.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
 async def _saver(
     name: str,
-) -> AsyncIterator[Union[AIOMySQLSaver, ShallowAIOMySQLSaver]]:
-    if name == "base":
-        async with _base_saver() as saver:
+) -> AsyncIterator[Union[BaseAsyncMySQLSaver, BaseShallowAsyncMySQLSaver]]:
+    if name == "aiomysql":
+        async with _aiomysql_saver() as saver:
             yield saver
-    elif name == "shallow":
-        async with _shallow_saver() as saver:
+    elif name == "aiomysql_shallow":
+        async with _aiomysql_shallow_saver() as saver:
             yield saver
-    elif name == "pool":
-        async with _pool_saver() as saver:
+    elif name == "aiomysql_pool":
+        async with _aiomysql_pool_saver() as saver:
+            yield saver
+    elif name == "asyncmy":
+        async with _asyncmy_saver() as saver:
+            yield saver
+    elif name == "asyncmy_shallow":
+        async with _asyncmy_shallow_saver() as saver:
+            yield saver
+    elif name == "asyncmy_pool":
+        async with _asyncmy_pool_saver() as saver:
             yield saver
 
 
@@ -170,7 +274,7 @@ def test_data() -> dict[str, Any]:
     }
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
+@pytest.mark.parametrize("saver_name", SAVERS)
 async def test_asearch(saver_name: str, test_data: dict[str, Any]) -> None:
     async with _saver(saver_name) as saver:
         configs = test_data["configs"]
@@ -215,7 +319,7 @@ async def test_asearch(saver_name: str, test_data: dict[str, Any]) -> None:
         } == {"", "inner"}
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
+@pytest.mark.parametrize("saver_name", SAVERS)
 async def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
     async with _saver(saver_name) as saver:
         config = await saver.aput(
@@ -230,7 +334,7 @@ async def test_null_chars(saver_name: str, test_data: dict[str, Any]) -> None:
         ].metadata["my_key"] == "abc"
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
+@pytest.mark.parametrize("saver_name", SAVERS)
 async def test_write_and_read_pending_writes_and_sends(
     saver_name: str, test_data: dict[str, Any]
 ) -> None:
@@ -259,7 +363,7 @@ async def test_write_and_read_pending_writes_and_sends(
         assert result.checkpoint["pending_sends"] == ["w3v"]
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
+@pytest.mark.parametrize("saver_name", SAVERS)
 @pytest.mark.parametrize(
     "channel_values",
     [
@@ -294,7 +398,7 @@ async def test_write_and_read_channel_values(
         assert result.checkpoint["channel_values"] == channel_values
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
+@pytest.mark.parametrize("saver_name", SAVERS)
 async def test_write_and_read_pending_writes(saver_name: str) -> None:
     async with _saver(saver_name) as saver:
         config: RunnableConfig = {
@@ -325,7 +429,7 @@ async def test_write_and_read_pending_writes(saver_name: str) -> None:
         ]
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
+@pytest.mark.parametrize("saver_name", SAVERS)
 async def test_write_with_different_checkpoint_ns_inserts(
     saver_name: str,
 ) -> None:
@@ -350,7 +454,7 @@ async def test_write_with_different_checkpoint_ns_inserts(
         assert len(results) == 2
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
+@pytest.mark.parametrize("saver_name", SAVERS)
 async def test_write_with_same_checkpoint_ns_updates(
     saver_name: str,
 ) -> None:
@@ -373,7 +477,7 @@ async def test_write_with_same_checkpoint_ns_updates(
         assert len(results) == 1
 
 
-@pytest.mark.parametrize("saver_name", ["base", "pool", "shallow"])
+@pytest.mark.parametrize("saver_name", SAVERS)
 async def test_graph_sync_get_state_history_raises(saver_name: str) -> None:
     """Regression test for https://github.com/langchain-ai/langgraph/issues/2992"""
 

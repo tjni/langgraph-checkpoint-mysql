@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "langgraph-checkpoint-mysql"
-version = "2.0.12"
+version = "2.0.13"
 description = "Library with a MySQL implementation of LangGraph checkpoint saver."
 authors = ["Theodore Ni <dev@ted.bio>"]
 license = "MIT"
@@ -14,11 +14,13 @@ langgraph-checkpoint = "^2.0.10"
 orjson = ">=3.10.1"
 pymysql =  { version = "^1.1.1", optional = true }
 aiomysql = { version = "^0.2.0", optional = true }
+asyncmy = { version = "^0.2.10", optional = true }
 typing-extensions = "^4.12.2"
 
 [tool.poetry.extras]
 pymysql = ["pymysql"]
 aiomysql = ["aiomysql"]
+asyncmy = ["asyncmy"]
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.2"
@@ -31,6 +33,7 @@ pytest-watch = "^4.2.0"
 mypy = "^1.10.0"
 pymysql = "^1.1.1"
 aiomysql = "^0.2.0"
+asyncmy = "^0.2.10"
 types-PyMySQL = "^1.1.0"
 langgraph = "0.2.67"
 syrupy = "^4.0.2"

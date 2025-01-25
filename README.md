@@ -10,7 +10,9 @@ Implementation of LangGraph CheckpointSaver that uses MySQL.
 
 ## Dependencies
 
-To use synchronous `PyMySQLSaver`, install `langgraph-checkpoint-mysql[pymysql]`. To use asynchronous `AIOMySQLSaver`, install `langgraph-checkpoint-mysql[aiomysql]`.
+- To use synchronous `PyMySQLSaver`, install `langgraph-checkpoint-mysql[pymysql]`.
+- To use asynchronous `AIOMySQLSaver`, install `langgraph-checkpoint-mysql[aiomysql]`.
+- To use asynchronous `AsyncMySaver`, install `langgraph-checkpoint-mysql[asyncmy]`.
 
 There is currently no support for other drivers.
 

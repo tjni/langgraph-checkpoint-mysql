@@ -41,9 +41,7 @@ class AsyncDictCursor(AsyncContextManager, Protocol):
 R = TypeVar("R", bound=AsyncDictCursor)  # cursor type
 
 
-class AIOMySQLConnection(AsyncContextManager, Protocol):
-    """From aiomysql package."""
-
+class AsyncConnection(AsyncContextManager, Protocol):
     async def begin(self) -> None:
         """Begin transaction."""
         ...
@@ -61,19 +59,17 @@ class AIOMySQLConnection(AsyncContextManager, Protocol):
         ...
 
 
-C = TypeVar("C", bound=AIOMySQLConnection)  # connection type
-COut = TypeVar("COut", bound=AIOMySQLConnection, covariant=True)  # connection type
+C = TypeVar("C", bound=AsyncConnection)  # connection type
+COut = TypeVar("COut", bound=AsyncConnection, covariant=True)  # connection type
 
 
-class AIOMySQLPool(Protocol, Generic[COut]):
-    """From aiomysql package."""
-
+class AsyncPool(Protocol, Generic[COut]):
     def acquire(self) -> COut:
         """Gets a connection from the connection pool."""
         ...
 
 
-Conn = Union[C, AIOMySQLPool[C]]
+Conn = Union[C, AsyncPool[C]]
 
 
 @asynccontextmanager
@@ -83,10 +79,7 @@ async def get_connection(
     if hasattr(conn, "cursor"):
         yield cast(C, conn)
     elif hasattr(conn, "acquire"):
-        async with cast(AIOMySQLPool[C], conn).acquire() as _conn:
-            # This seems necessary until https://github.com/PyMySQL/PyMySQL/pull/1119
-            # is merged into aiomysql.
-            await _conn.set_charset("utf8mb4")
+        async with cast(AsyncPool[C], conn).acquire() as _conn:
             yield _conn
     else:
         raise TypeError(f"Invalid connection type: {type(conn)}")
