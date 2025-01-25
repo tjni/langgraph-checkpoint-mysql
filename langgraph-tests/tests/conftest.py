@@ -3,6 +3,7 @@ from typing import AsyncIterator, Optional
 from uuid import UUID, uuid4
 
 import aiomysql  # type: ignore
+import asyncmy
 import pymysql
 import pymysql.constants.ER
 import pytest
@@ -13,9 +14,11 @@ from sqlalchemy import Engine, create_engine
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver, ShallowAIOMySQLSaver
+from langgraph.checkpoint.mysql.asyncmy import AsyncMySaver, ShallowAsyncMySaver
 from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver, ShallowPyMySQLSaver
 from langgraph.store.base import BaseStore
 from langgraph.store.mysql.aio import AIOMySQLStore
+from langgraph.store.mysql.asyncmy import AsyncMyStore
 from langgraph.store.mysql.pymysql import PyMySQLStore
 
 DEFAULT_MYSQL_URI = "mysql://mysql:mysql@localhost:5441/"
@@ -109,6 +112,89 @@ def checkpointer_pymysql_pool():
             with conn.cursor() as cursor:
                 cursor.execute(f"DROP DATABASE {database}")
 
+
+@asynccontextmanager
+async def _checkpointer_asyncmy():
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    async with await asyncmy.connect(
+        **AsyncMySaver.parse_conn_string(DEFAULT_MYSQL_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        # yield checkpointer
+        async with AsyncMySaver.from_conn_string(
+            DEFAULT_MYSQL_URI + database
+        ) as checkpointer:
+            await checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        async with await asyncmy.connect(
+            **AsyncMySaver.parse_conn_string(DEFAULT_MYSQL_URI),
+            autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
+async def _checkpointer_asyncmy_shallow():
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    async with await asyncmy.connect(
+        **AsyncMySaver.parse_conn_string(DEFAULT_MYSQL_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        # yield checkpointer
+        async with ShallowAsyncMySaver.from_conn_string(
+            DEFAULT_MYSQL_URI + database
+        ) as checkpointer:
+            await checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        async with await asyncmy.connect(
+            **AsyncMySaver.parse_conn_string(DEFAULT_MYSQL_URI),
+            autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
+async def _checkpointer_asyncmy_pool():
+    database = f"test_{uuid4().hex[:16]}"
+    # create unique db
+    async with await asyncmy.connect(
+        **AsyncMySaver.parse_conn_string(DEFAULT_MYSQL_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        # yield checkpointer
+        async with asyncmy.create_pool(
+            **AsyncMySaver.parse_conn_string(DEFAULT_MYSQL_URI + database),
+            maxsize=10,
+            autocommit=True,
+        ) as pool:
+            checkpointer = AsyncMySaver(pool)
+            await checkpointer.setup()
+            yield checkpointer
+    finally:
+        # drop unique db
+        async with await asyncmy.connect(
+            **AsyncMySaver.parse_conn_string(DEFAULT_MYSQL_URI),
+            autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
 
 @asynccontextmanager
 async def _checkpointer_aiomysql():
@@ -207,6 +293,15 @@ async def awith_checkpointer(
     elif checkpointer_name == "aiomysql_pool":
         async with _checkpointer_aiomysql_pool() as checkpointer:
             yield checkpointer
+    elif checkpointer_name == "asyncmy":
+        async with _checkpointer_asyncmy() as checkpointer:
+            yield checkpointer
+    elif checkpointer_name == "asyncmy_shallow":
+        async with _checkpointer_asyncmy_shallow() as checkpointer:
+            yield checkpointer
+    elif checkpointer_name == "asyncmy_pool":
+        async with _checkpointer_asyncmy_pool() as checkpointer:
+            yield checkpointer
     else:
         raise NotImplementedError(f"Unknown checkpointer: {checkpointer_name}")
 
@@ -253,6 +348,57 @@ def store_pymysql_pool():
 
 
 @asynccontextmanager
+async def _store_asyncmy():
+    database = f"test_{uuid4().hex[:16]}"
+    async with await asyncmy.connect(
+        **AsyncMyStore.parse_conn_string(DEFAULT_MYSQL_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        async with AsyncMyStore.from_conn_string(
+            DEFAULT_MYSQL_URI + database
+        ) as store:
+            await store.setup()
+            yield store
+    finally:
+        async with await asyncmy.connect(
+            **AsyncMyStore.parse_conn_string(DEFAULT_MYSQL_URI),
+            autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
+async def _store_asyncmy_pool():
+    database = f"test_{uuid4().hex[:16]}"
+    async with await asyncmy.connect(
+        **AsyncMyStore.parse_conn_string(DEFAULT_MYSQL_URI),
+        autocommit=True,
+    ) as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"CREATE DATABASE {database}")
+    try:
+        async with asyncmy.create_pool(
+            **AsyncMyStore.parse_conn_string(DEFAULT_MYSQL_URI + database),
+            maxsize=10,
+            autocommit=True,
+        ) as pool:
+            store = AsyncMyStore(pool)
+            await store.setup()
+            yield store
+    finally:
+        async with await asyncmy.connect(
+            **AsyncMyStore.parse_conn_string(DEFAULT_MYSQL_URI),
+            autocommit=True
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"DROP DATABASE {database}")
+
+
+@asynccontextmanager
 async def _store_aiomysql():
     database = f"test_{uuid4().hex[:16]}"
     async with await aiomysql.connect(
@@ -270,30 +416,6 @@ async def _store_aiomysql():
     finally:
         async with await aiomysql.connect(
             **AIOMySQLStore.parse_conn_string(DEFAULT_MYSQL_URI),
-            autocommit=True
-        ) as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(f"DROP DATABASE {database}")
-
-
-@asynccontextmanager
-async def _store_aiomysql_shallow():
-    database = f"test_{uuid4().hex[:16]}"
-    async with await aiomysql.connect(
-        **ShallowAIOMySQLStore.parse_conn_string(DEFAULT_MYSQL_URI),
-        autocommit=True,
-    ) as conn:
-        async with conn.cursor() as cursor:
-            await cursor.execute(f"CREATE DATABASE {database}")
-    try:
-        async with ShallowAIOMySQLStore.from_conn_string(
-            DEFAULT_MYSQL_URI + database
-        ) as store:
-            await store.setup()
-            yield store
-    finally:
-        async with await aiomysql.connect(
-            **ShallowAIOMySQLStore.parse_conn_string(DEFAULT_MYSQL_URI),
             autocommit=True
         ) as conn:
             async with conn.cursor() as cursor:
@@ -335,6 +457,12 @@ async def awith_store(store_name: Optional[str]) -> AsyncIterator[BaseStore]:
     elif store_name == "aiomysql_pool":
         async with _store_aiomysql_pool() as store:
             yield store
+    elif store_name == "asyncmy":
+        async with _store_asyncmy() as store:
+            yield store
+    elif store_name == "asyncmy_pool":
+        async with _store_asyncmy_pool() as store:
+            yield store
     else:
         raise NotImplementedError(f"Unknown store {store_name}")
 
@@ -355,4 +483,4 @@ ALL_CHECKPOINTERS_ASYNC = [
     *SHALLOW_CHECKPOINTERS_ASYNC,
 ]
 ALL_STORES_SYNC = ["pymysql", "pymysql_pool"]
-ALL_STORES_ASYNC = ["aiomysql", "aiomysql_pool"]
+ALL_STORES_ASYNC = ["aiomysql", "aiomysql_pool", "asyncmy", "asyncmy_pool"]

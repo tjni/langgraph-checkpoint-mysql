@@ -3,18 +3,16 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Optional, cast
 
-import aiomysql  # type: ignore
+from asyncmy import Connection, connect  # type: ignore
+from asyncmy.cursors import DictCursor  # type: ignore
 from typing_extensions import Self, override
 
-from langgraph.checkpoint.mysql import _ainternal
 from langgraph.checkpoint.mysql.aio_base import BaseAsyncMySQLSaver
 from langgraph.checkpoint.mysql.shallow import BaseShallowAsyncMySQLSaver
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
-Conn = _ainternal.Conn[aiomysql.Connection]  # For backward compatibility
 
-
-class AIOMySQLSaver(BaseAsyncMySQLSaver[aiomysql.Connection, aiomysql.DictCursor]):
+class AsyncMySaver(BaseAsyncMySQLSaver[Connection, DictCursor]):
     @staticmethod
     def parse_conn_string(conn_string: str) -> dict[str, Any]:
         parsed = urllib.parse.urlparse(conn_string)
@@ -41,18 +39,18 @@ class AIOMySQLSaver(BaseAsyncMySQLSaver[aiomysql.Connection, aiomysql.DictCursor
         *,
         serde: Optional[SerializerProtocol] = None,
     ) -> AsyncIterator[Self]:
-        """Create a new AIOMySQLSaver instance from a connection string.
+        """Create a new AsyncMySaver instance from a connection string.
 
         Args:
             conn_string (str): The MySQL connection info string.
 
         Returns:
-            AIOMySQLSaver: A new AIOMySQLSaver instance.
+            AsyncMySaver: A new AsyncMySaver instance.
 
         Example:
-            conn_string=mysql+aiomysql://user:password@localhost/db?unix_socket=/path/to/socket
+            conn_string=mysql+asyncmy://user:password@localhost/db?unix_socket=/path/to/socket
         """
-        async with aiomysql.connect(
+        async with connect(
             **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
@@ -60,13 +58,11 @@ class AIOMySQLSaver(BaseAsyncMySQLSaver[aiomysql.Connection, aiomysql.DictCursor
 
     @override
     @staticmethod
-    def _get_cursor_from_connection(conn: aiomysql.Connection) -> aiomysql.DictCursor:
-        return cast(aiomysql.DictCursor, conn.cursor(aiomysql.DictCursor))
+    def _get_cursor_from_connection(conn: Connection) -> DictCursor:
+        return cast(DictCursor, conn.cursor(DictCursor))
 
 
-class ShallowAIOMySQLSaver(
-    BaseShallowAsyncMySQLSaver[aiomysql.Connection, aiomysql.DictCursor]
-):
+class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
     @classmethod
     @asynccontextmanager
     async def from_conn_string(
@@ -75,27 +71,27 @@ class ShallowAIOMySQLSaver(
         *,
         serde: Optional[SerializerProtocol] = None,
     ) -> AsyncIterator[Self]:
-        """Create a new ShallowAIOMySQLSaver instance from a connection string.
+        """Create a new ShallowAsyncMySaver instance from a connection string.
 
         Args:
             conn_string (str): The MySQL connection info string.
 
         Returns:
-            ShallowAIOMySQLSaver: A new ShallowAIOMySQLSaver instance.
+            ShallowAsyncMySaver: A new ShallowAsyncMySaver instance.
 
         Example:
-            conn_string=mysql+aiomysql://user:password@localhost/db?unix_socket=/path/to/socket
+            conn_string=mysql+asyncmy://user:password@localhost/db?unix_socket=/path/to/socket
         """
-        async with aiomysql.connect(
-            **AIOMySQLSaver.parse_conn_string(conn_string),
+        async with connect(
+            **AsyncMySaver.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
             yield cls(conn=conn, serde=serde)
 
     @override
     @staticmethod
-    def _get_cursor_from_connection(conn: aiomysql.Connection) -> aiomysql.DictCursor:
-        return cast(aiomysql.DictCursor, conn.cursor(aiomysql.DictCursor))
+    def _get_cursor_from_connection(conn: Connection) -> DictCursor:
+        return cast(DictCursor, conn.cursor(DictCursor))
 
 
-__all__ = ["AIOMySQLSaver", "ShallowAIOMySQLSaver", "Conn"]
+__all__ = ["AsyncMySaver", "ShallowAsyncMySaver"]

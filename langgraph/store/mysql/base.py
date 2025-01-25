@@ -9,11 +9,8 @@ from datetime import datetime
 from typing import (
     Any,
     Callable,
-    ContextManager,
     Generic,
-    Mapping,
     Optional,
-    Protocol,
     TypeVar,
     Union,
     cast,
@@ -59,28 +56,7 @@ CREATE INDEX store_prefix_idx ON store (prefix) USING btree;
 ]
 
 
-class DictCursor(ContextManager, Protocol):
-    """
-    Protocol that a cursor should implement.
-
-    Modeled after DBAPICursor from Typeshed.
-    """
-
-    def execute(
-        self,
-        operation: str,
-        parameters: Union[Sequence[Any], Mapping[str, Any]] = ...,
-        /,
-    ) -> object: ...
-    def executemany(
-        self, operation: str, seq_of_parameters: Sequence[Sequence[Any]], /
-    ) -> object: ...
-    def fetchone(self) -> Optional[dict[str, Any]]: ...
-    def fetchall(self) -> Sequence[dict[str, Any]]: ...
-
-
 C = TypeVar("C", bound=Union[_internal.Conn, _ainternal.Conn])  # connection type
-R = TypeVar("R", bound=DictCursor)  # cursor type
 
 
 class BaseMySQLStore(Generic[C]):
@@ -303,7 +279,9 @@ class BaseMySQLStore(Generic[C]):
 
 
 class BaseSyncMySQLStore(
-    BaseStore, BaseMySQLStore[_internal.Conn[_internal.C]], Generic[_internal.C, R]
+    BaseStore,
+    BaseMySQLStore[_internal.Conn[_internal.C]],
+    Generic[_internal.C, _internal.R],
 ):
     __slots__ = ("_deserializer", "lock")
 
@@ -321,11 +299,11 @@ class BaseSyncMySQLStore(
         self.lock = threading.Lock()
 
     @staticmethod
-    def _get_cursor_from_connection(conn: _internal.C) -> R:
+    def _get_cursor_from_connection(conn: _internal.C) -> _internal.R:
         raise NotImplementedError
 
     @contextmanager
-    def _cursor(self, *, pipeline: bool = False) -> Iterator[R]:
+    def _cursor(self, *, pipeline: bool = False) -> Iterator[_internal.R]:
         """Create a database cursor as a context manager.
 
         Args:
@@ -385,7 +363,7 @@ class BaseSyncMySQLStore(
         self,
         get_ops: Sequence[tuple[int, GetOp]],
         results: list[Result],
-        cur: R,
+        cur: _internal.R,
     ) -> None:
         for query, params, namespace, items in self._get_batch_GET_ops_queries(get_ops):
             cur.execute(query, params)
@@ -403,7 +381,7 @@ class BaseSyncMySQLStore(
     def _batch_put_ops(
         self,
         put_ops: Sequence[tuple[int, PutOp]],
-        cur: R,
+        cur: _internal.R,
     ) -> None:
         queries = self._prepare_batch_PUT_queries(put_ops)
         for query, params in queries:
@@ -413,7 +391,7 @@ class BaseSyncMySQLStore(
         self,
         search_ops: Sequence[tuple[int, SearchOp]],
         results: list[Result],
-        cur: R,
+        cur: _internal.R,
     ) -> None:
         for (query, params), (idx, _) in zip(
             self._prepare_batch_search_queries(search_ops), search_ops
@@ -431,7 +409,7 @@ class BaseSyncMySQLStore(
         self,
         list_ops: Sequence[tuple[int, ListNamespacesOp]],
         results: list[Result],
-        cur: R,
+        cur: _internal.R,
     ) -> None:
         for (query, params), (idx, _) in zip(
             self._get_batch_list_namespaces_queries(list_ops), list_ops
@@ -451,7 +429,7 @@ class BaseSyncMySQLStore(
         the first time the store is used.
         """
 
-        def _get_version(cur: R, table: str) -> int:
+        def _get_version(cur: _internal.R, table: str) -> int:
             cur.execute(
                 f"""
                 CREATE TABLE IF NOT EXISTS {table} (

@@ -6,25 +6,38 @@ from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 
 import aiomysql  # type: ignore
+import asyncmy
 import pytest
 
 from langgraph.store.base import GetOp, Item, ListNamespacesOp, PutOp, SearchOp
-from langgraph.store.mysql import AIOMySQLStore
-from tests.conftest import DEFAULT_BASE_URI, DEFAULT_URI
+from langgraph.store.mysql.aio import AIOMySQLStore
+from langgraph.store.mysql.aio_base import BaseAsyncMySQLStore
+from langgraph.store.mysql.asyncmy import AsyncMyStore
+from tests.conftest import DEFAULT_BASE_URI
 
 
-@pytest.fixture(scope="function", params=["default", "pool"])
-async def store(request) -> AsyncIterator[AIOMySQLStore]:
+@pytest.fixture(
+    scope="function", params=["aiomysql", "aiomysql_pool", "asyncmy", "asyncmy_pool"]
+)
+async def store(request) -> AsyncIterator[BaseAsyncMySQLStore]:
     database = f"test_{uuid.uuid4().hex[:16]}"
 
-    async with await aiomysql.connect(
-        **AIOMySQLStore.parse_conn_string(DEFAULT_BASE_URI),
-        autocommit=True,
-    ) as conn:
-        async with conn.cursor() as cursor:
-            await cursor.execute(f"CREATE DATABASE {database}")
+    if request.param.startswith("aiomysql"):
+        async with await aiomysql.connect(
+            **AIOMySQLStore.parse_conn_string(DEFAULT_BASE_URI),
+            autocommit=True,
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"CREATE DATABASE {database}")
+    else:
+        async with await asyncmy.connect(
+            **AsyncMyStore.parse_conn_string(DEFAULT_BASE_URI),
+            autocommit=True,
+        ) as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"CREATE DATABASE {database}")
     try:
-        if request.param == "pool":
+        if request.param == "aiomysql_pool":
             async with aiomysql.create_pool(
                 **AIOMySQLStore.parse_conn_string(DEFAULT_BASE_URI + database),
                 maxsize=10,
@@ -33,21 +46,43 @@ async def store(request) -> AsyncIterator[AIOMySQLStore]:
                 store = AIOMySQLStore(pool)
                 await store.setup()
                 yield store
-        else:
+        elif request.param == "aiomysql":
             async with AIOMySQLStore.from_conn_string(
                 DEFAULT_BASE_URI + database
             ) as store:
                 await store.setup()
                 yield store
+        elif request.param == "asyncmy_pool":
+            async with asyncmy.create_pool(
+                **AsyncMyStore.parse_conn_string(DEFAULT_BASE_URI + database),
+                maxsize=10,
+                autocommit=True,
+            ) as pool:
+                store = AsyncMyStore(pool)
+                await store.setup()
+                yield store
+        elif request.param == "asyncmy":
+            async with AsyncMyStore.from_conn_string(
+                DEFAULT_BASE_URI + database
+            ) as store:
+                await store.setup()
+                yield store
     finally:
-        async with await aiomysql.connect(
-            **AIOMySQLStore.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
-        ) as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(f"DROP DATABASE {database}")
+        if request.param.startswith("aiomysql"):
+            async with await aiomysql.connect(
+                **AIOMySQLStore.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+            ) as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(f"DROP DATABASE {database}")
+        else:
+            async with await asyncmy.connect(
+                **AsyncMyStore.parse_conn_string(DEFAULT_BASE_URI), autocommit=True
+            ) as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(f"DROP DATABASE {database}")
 
 
-async def test_no_running_loop(store: AIOMySQLStore) -> None:
+async def test_no_running_loop(store: BaseAsyncMySQLStore) -> None:
     with pytest.raises(asyncio.InvalidStateError):
         store.put(("foo", "bar"), "baz", {"val": "baz"})
     with pytest.raises(asyncio.InvalidStateError):
@@ -72,7 +107,7 @@ async def test_no_running_loop(store: AIOMySQLStore) -> None:
         )
 
 
-async def test_large_batches(store: AIOMySQLStore) -> None:
+async def test_large_batches(store: BaseAsyncMySQLStore) -> None:
     N = 100  # less important that we are performant here
     M = 10
 
@@ -121,7 +156,7 @@ async def test_large_batches(store: AIOMySQLStore) -> None:
     assert len(results) == M * N * 6
 
 
-async def test_large_batches_async(store: AIOMySQLStore) -> None:
+async def test_large_batches_async(store: BaseAsyncMySQLStore) -> None:
     N = 1000
     M = 10
     coros = []
@@ -169,7 +204,7 @@ async def test_large_batches_async(store: AIOMySQLStore) -> None:
     assert len(results) == M * N * 6
 
 
-async def test_abatch_order(store: AIOMySQLStore) -> None:
+async def test_abatch_order(store: BaseAsyncMySQLStore) -> None:
     # Setup test data
     await store.aput(("test", "foo"), "key1", {"data": "value1"})
     await store.aput(("test", "bar"), "key2", {"data": "value2"})
@@ -222,7 +257,7 @@ async def test_abatch_order(store: AIOMySQLStore) -> None:
     assert results_reordered[4].key == "key1"
 
 
-async def test_batch_get_ops(store: AIOMySQLStore) -> None:
+async def test_batch_get_ops(store: BaseAsyncMySQLStore) -> None:
     # Setup test data
     await store.aput(("test",), "key1", {"data": "value1"})
     await store.aput(("test",), "key2", {"data": "value2"})
@@ -243,7 +278,7 @@ async def test_batch_get_ops(store: AIOMySQLStore) -> None:
     assert results[1].key == "key2"
 
 
-async def test_batch_put_ops(store: AIOMySQLStore) -> None:
+async def test_batch_put_ops(store: BaseAsyncMySQLStore) -> None:
     ops = [
         PutOp(namespace=("test",), key="key1", value={"data": "value1"}),
         PutOp(namespace=("test",), key="key2", value={"data": "value2"}),
@@ -260,7 +295,7 @@ async def test_batch_put_ops(store: AIOMySQLStore) -> None:
     assert len(items) == 2  # key3 had None value so wasn't stored
 
 
-async def test_batch_search_ops(store: AIOMySQLStore) -> None:
+async def test_batch_search_ops(store: BaseAsyncMySQLStore) -> None:
     # Setup test data
     await store.aput(("test", "foo"), "key1", {"data": "value1"})
     await store.aput(("test", "bar"), "key2", {"data": "value2"})
@@ -279,7 +314,7 @@ async def test_batch_search_ops(store: AIOMySQLStore) -> None:
     assert len(results[1]) == 2  # All results
 
 
-async def test_batch_list_namespaces_ops(store: AIOMySQLStore) -> None:
+async def test_batch_list_namespaces_ops(store: BaseAsyncMySQLStore) -> None:
     # Setup test data
     await store.aput(("test", "namespace1"), "key1", {"data": "value1"})
     await store.aput(("test", "namespace2"), "key2", {"data": "value2"})
@@ -294,273 +329,258 @@ async def test_batch_list_namespaces_ops(store: AIOMySQLStore) -> None:
     assert ("test", "namespace2") in results[0]
 
 
-class TestAIOMySQLStore:
-    @pytest.fixture(autouse=True)
-    async def setup(self) -> None:
-        async with AIOMySQLStore.from_conn_string(DEFAULT_URI) as store:
-            await store.setup()
+async def test_basic_store_ops(store: BaseAsyncMySQLStore) -> None:
+    namespace = ("test", "documents")
+    item_id = "doc1"
+    item_value = {"title": "Test Document", "content": "Hello, World!"}
 
-    async def test_basic_store_ops(self) -> None:
-        async with AIOMySQLStore.from_conn_string(DEFAULT_URI) as store:
-            namespace = ("test", "documents")
-            item_id = "doc1"
-            item_value = {"title": "Test Document", "content": "Hello, World!"}
+    await store.aput(namespace, item_id, item_value)
+    item = await store.aget(namespace, item_id)
 
-            await store.aput(namespace, item_id, item_value)
-            item = await store.aget(namespace, item_id)
+    assert item
+    assert item.namespace == namespace
+    assert item.key == item_id
+    assert item.value == item_value
 
-            assert item
-            assert item.namespace == namespace
-            assert item.key == item_id
-            assert item.value == item_value
+    updated_value = {
+        "title": "Updated Test Document",
+        "content": "Hello, LangGraph!",
+    }
+    time.sleep(1)  # ensures new updated time is greater
+    await store.aput(namespace, item_id, updated_value)
+    updated_item = await store.aget(namespace, item_id)
 
-            updated_value = {
-                "title": "Updated Test Document",
-                "content": "Hello, LangGraph!",
-            }
-            time.sleep(1)  # ensures new updated time is greater
-            await store.aput(namespace, item_id, updated_value)
-            updated_item = await store.aget(namespace, item_id)
+    assert updated_item.value == updated_value
+    assert updated_item.updated_at > item.updated_at
+    different_namespace = ("test", "other_documents")
+    item_in_different_namespace = await store.aget(different_namespace, item_id)
+    assert item_in_different_namespace is None
 
-            assert updated_item.value == updated_value
-            assert updated_item.updated_at > item.updated_at
-            different_namespace = ("test", "other_documents")
-            item_in_different_namespace = await store.aget(different_namespace, item_id)
-            assert item_in_different_namespace is None
+    new_item_id = "doc2"
+    new_item_value = {"title": "Another Document", "content": "Greetings!"}
+    await store.aput(namespace, new_item_id, new_item_value)
 
-            new_item_id = "doc2"
-            new_item_value = {"title": "Another Document", "content": "Greetings!"}
-            await store.aput(namespace, new_item_id, new_item_value)
+    search_results = await store.asearch(["test"], limit=10)
+    items = search_results
+    assert len(items) == 2
+    assert any(item.key == item_id for item in items)
+    assert any(item.key == new_item_id for item in items)
 
-            search_results = await store.asearch(["test"], limit=10)
-            items = search_results
-            assert len(items) == 2
-            assert any(item.key == item_id for item in items)
-            assert any(item.key == new_item_id for item in items)
+    namespaces = await store.alist_namespaces(prefix=["test"])
+    assert ("test", "documents") in namespaces
 
-            namespaces = await store.alist_namespaces(prefix=["test"])
-            assert ("test", "documents") in namespaces
+    await store.adelete(namespace, item_id)
+    await store.adelete(namespace, new_item_id)
+    deleted_item = await store.aget(namespace, item_id)
+    assert deleted_item is None
 
-            await store.adelete(namespace, item_id)
-            await store.adelete(namespace, new_item_id)
-            deleted_item = await store.aget(namespace, item_id)
-            assert deleted_item is None
+    deleted_item = await store.aget(namespace, new_item_id)
+    assert deleted_item is None
 
-            deleted_item = await store.aget(namespace, new_item_id)
-            assert deleted_item is None
+    empty_search_results = await store.asearch(["test"], limit=10)
+    assert len(empty_search_results) == 0
 
-            empty_search_results = await store.asearch(["test"], limit=10)
-            assert len(empty_search_results) == 0
 
-    async def test_list_namespaces(self) -> None:
-        async with AIOMySQLStore.from_conn_string(DEFAULT_URI) as store:
-            test_pref = str(uuid.uuid4())
-            test_namespaces = [
-                (test_pref, "test", "documents", "public", test_pref),
-                (test_pref, "test", "documents", "private", test_pref),
-                (test_pref, "test", "images", "public", test_pref),
-                (test_pref, "test", "images", "private", test_pref),
-                (test_pref, "prod", "documents", "public", test_pref),
-                (
-                    test_pref,
-                    "prod",
-                    "documents",
-                    "some",
-                    "nesting",
-                    "public",
-                    test_pref,
-                ),
-                (test_pref, "prod", "documents", "private", test_pref),
-            ]
+async def test_list_namespaces(store: BaseAsyncMySQLStore) -> None:
+    test_pref = str(uuid.uuid4())
+    test_namespaces = [
+        (test_pref, "test", "documents", "public", test_pref),
+        (test_pref, "test", "documents", "private", test_pref),
+        (test_pref, "test", "images", "public", test_pref),
+        (test_pref, "test", "images", "private", test_pref),
+        (test_pref, "prod", "documents", "public", test_pref),
+        (
+            test_pref,
+            "prod",
+            "documents",
+            "some",
+            "nesting",
+            "public",
+            test_pref,
+        ),
+        (test_pref, "prod", "documents", "private", test_pref),
+    ]
 
-            for namespace in test_namespaces:
-                await store.aput(namespace, "dummy", {"content": "dummy"})
+    for namespace in test_namespaces:
+        await store.aput(namespace, "dummy", {"content": "dummy"})
 
-            prefix_result = await store.alist_namespaces(prefix=[test_pref, "test"])
-            assert len(prefix_result) == 4
-            assert all([ns[1] == "test" for ns in prefix_result])
+    prefix_result = await store.alist_namespaces(prefix=[test_pref, "test"])
+    assert len(prefix_result) == 4
+    assert all([ns[1] == "test" for ns in prefix_result])
 
-            specific_prefix_result = await store.alist_namespaces(
-                prefix=[test_pref, "test", "documents"]
-            )
-            assert len(specific_prefix_result) == 2
-            assert all(
-                [ns[1:3] == ("test", "documents") for ns in specific_prefix_result]
-            )
+    specific_prefix_result = await store.alist_namespaces(
+        prefix=[test_pref, "test", "documents"]
+    )
+    assert len(specific_prefix_result) == 2
+    assert all([ns[1:3] == ("test", "documents") for ns in specific_prefix_result])
 
-            suffix_result = await store.alist_namespaces(suffix=["public", test_pref])
-            assert len(suffix_result) == 4
-            assert all(ns[-2] == "public" for ns in suffix_result)
+    suffix_result = await store.alist_namespaces(suffix=["public", test_pref])
+    assert len(suffix_result) == 4
+    assert all(ns[-2] == "public" for ns in suffix_result)
 
-            prefix_suffix_result = await store.alist_namespaces(
-                prefix=[test_pref, "test"], suffix=["public", test_pref]
-            )
-            assert len(prefix_suffix_result) == 2
-            assert all(
-                ns[1] == "test" and ns[-2] == "public" for ns in prefix_suffix_result
-            )
+    prefix_suffix_result = await store.alist_namespaces(
+        prefix=[test_pref, "test"], suffix=["public", test_pref]
+    )
+    assert len(prefix_suffix_result) == 2
+    assert all(ns[1] == "test" and ns[-2] == "public" for ns in prefix_suffix_result)
 
-            wildcard_prefix_result = await store.alist_namespaces(
-                prefix=[test_pref, "*", "documents"]
-            )
-            assert len(wildcard_prefix_result) == 5
-            assert all(ns[2] == "documents" for ns in wildcard_prefix_result)
+    wildcard_prefix_result = await store.alist_namespaces(
+        prefix=[test_pref, "*", "documents"]
+    )
+    assert len(wildcard_prefix_result) == 5
+    assert all(ns[2] == "documents" for ns in wildcard_prefix_result)
 
-            wildcard_suffix_result = await store.alist_namespaces(
-                suffix=["*", "public", test_pref]
-            )
-            assert len(wildcard_suffix_result) == 4
-            assert all(ns[-2] == "public" for ns in wildcard_suffix_result)
-            wildcard_single = await store.alist_namespaces(
-                suffix=["some", "*", "public", test_pref]
-            )
-            assert len(wildcard_single) == 1
-            assert wildcard_single[0] == (
-                test_pref,
-                "prod",
-                "documents",
-                "some",
-                "nesting",
-                "public",
-                test_pref,
-            )
+    wildcard_suffix_result = await store.alist_namespaces(
+        suffix=["*", "public", test_pref]
+    )
+    assert len(wildcard_suffix_result) == 4
+    assert all(ns[-2] == "public" for ns in wildcard_suffix_result)
+    wildcard_single = await store.alist_namespaces(
+        suffix=["some", "*", "public", test_pref]
+    )
+    assert len(wildcard_single) == 1
+    assert wildcard_single[0] == (
+        test_pref,
+        "prod",
+        "documents",
+        "some",
+        "nesting",
+        "public",
+        test_pref,
+    )
 
-            max_depth_result = await store.alist_namespaces(max_depth=3)
-            assert all([len(ns) <= 3 for ns in max_depth_result])
-            max_depth_result = await store.alist_namespaces(
-                max_depth=4, prefix=[test_pref, "*", "documents"]
-            )
-            assert (
-                len(set(tuple(res) for res in max_depth_result))
-                == len(max_depth_result)
-                == 5
-            )
+    max_depth_result = await store.alist_namespaces(max_depth=3)
+    assert all([len(ns) <= 3 for ns in max_depth_result])
+    max_depth_result = await store.alist_namespaces(
+        max_depth=4, prefix=[test_pref, "*", "documents"]
+    )
+    assert (
+        len(set(tuple(res) for res in max_depth_result)) == len(max_depth_result) == 5
+    )
 
-            limit_result = await store.alist_namespaces(prefix=[test_pref], limit=3)
-            assert len(limit_result) == 3
+    limit_result = await store.alist_namespaces(prefix=[test_pref], limit=3)
+    assert len(limit_result) == 3
 
-            offset_result = await store.alist_namespaces(prefix=[test_pref], offset=3)
-            assert len(offset_result) == len(test_namespaces) - 3
+    offset_result = await store.alist_namespaces(prefix=[test_pref], offset=3)
+    assert len(offset_result) == len(test_namespaces) - 3
 
-            empty_prefix_result = await store.alist_namespaces(prefix=[test_pref])
-            assert len(empty_prefix_result) == len(test_namespaces)
-            assert set(tuple(ns) for ns in empty_prefix_result) == set(
-                tuple(ns) for ns in test_namespaces
-            )
+    empty_prefix_result = await store.alist_namespaces(prefix=[test_pref])
+    assert len(empty_prefix_result) == len(test_namespaces)
+    assert set(tuple(ns) for ns in empty_prefix_result) == set(
+        tuple(ns) for ns in test_namespaces
+    )
 
-            for namespace in test_namespaces:
-                await store.adelete(namespace, "dummy")
+    for namespace in test_namespaces:
+        await store.adelete(namespace, "dummy")
 
-    async def test_search(self):
-        async with AIOMySQLStore.from_conn_string(DEFAULT_URI) as store:
-            test_namespaces = [
-                ("test_search", "documents", "user1"),
-                ("test_search", "documents", "user2"),
-                ("test_search", "reports", "department1"),
-                ("test_search", "reports", "department2"),
-            ]
-            test_items = [
-                {"title": "Doc 1", "author": "John Doe", "tags": ["important"]},
-                {"title": "Doc 2", "author": "Jane Smith", "tags": ["draft"]},
-                {"title": "Report A", "author": "John Doe", "tags": ["final"]},
-                {"title": "Report B", "author": "Alice Johnson", "tags": ["draft"]},
-            ]
-            empty = await store.asearch(
-                (
-                    "scoped",
-                    "assistant_id",
-                    "shared",
-                    "6c5356f6-63ab-4158-868d-cd9fd14c736e",
-                ),
-                limit=10,
-                offset=0,
-            )
-            assert len(empty) == 0
 
-            for namespace, item in zip(test_namespaces, test_items):
-                await store.aput(namespace, f"item_{namespace[-1]}", item)
+async def test_search(store: BaseAsyncMySQLStore):
+    test_namespaces = [
+        ("test_search", "documents", "user1"),
+        ("test_search", "documents", "user2"),
+        ("test_search", "reports", "department1"),
+        ("test_search", "reports", "department2"),
+    ]
+    test_items = [
+        {"title": "Doc 1", "author": "John Doe", "tags": ["important"]},
+        {"title": "Doc 2", "author": "Jane Smith", "tags": ["draft"]},
+        {"title": "Report A", "author": "John Doe", "tags": ["final"]},
+        {"title": "Report B", "author": "Alice Johnson", "tags": ["draft"]},
+    ]
+    empty = await store.asearch(
+        (
+            "scoped",
+            "assistant_id",
+            "shared",
+            "6c5356f6-63ab-4158-868d-cd9fd14c736e",
+        ),
+        limit=10,
+        offset=0,
+    )
+    assert len(empty) == 0
 
-            docs_result = await store.asearch(["test_search", "documents"])
-            assert len(docs_result) == 2
-            assert all([item.namespace[1] == "documents" for item in docs_result]), [
-                item.namespace for item in docs_result
-            ]
+    for namespace, item in zip(test_namespaces, test_items):
+        await store.aput(namespace, f"item_{namespace[-1]}", item)
 
-            reports_result = await store.asearch(["test_search", "reports"])
-            assert len(reports_result) == 2
-            assert all(item.namespace[1] == "reports" for item in reports_result)
+    docs_result = await store.asearch(["test_search", "documents"])
+    assert len(docs_result) == 2
+    assert all([item.namespace[1] == "documents" for item in docs_result]), [
+        item.namespace for item in docs_result
+    ]
 
-            limited_result = await store.asearch(["test_search"], limit=2)
-            assert len(limited_result) == 2
-            offset_result = await store.asearch(["test_search"])
-            assert len(offset_result) == 4
+    reports_result = await store.asearch(["test_search", "reports"])
+    assert len(reports_result) == 2
+    assert all(item.namespace[1] == "reports" for item in reports_result)
 
-            offset_result = await store.asearch(["test_search"], offset=2)
-            assert len(offset_result) == 2
-            assert all(item not in limited_result for item in offset_result)
+    limited_result = await store.asearch(["test_search"], limit=2)
+    assert len(limited_result) == 2
+    offset_result = await store.asearch(["test_search"])
+    assert len(offset_result) == 4
 
-            john_doe_result = await store.asearch(
-                ["test_search"], filter={"author": "John Doe"}
-            )
-            assert len(john_doe_result) == 2
-            assert all(item.value["author"] == "John Doe" for item in john_doe_result)
+    offset_result = await store.asearch(["test_search"], offset=2)
+    assert len(offset_result) == 2
+    assert all(item not in limited_result for item in offset_result)
 
-            draft_result = await store.asearch(
-                ["test_search"], filter={"tags": ["draft"]}
-            )
-            assert len(draft_result) == 2
-            assert all("draft" in item.value["tags"] for item in draft_result)
+    john_doe_result = await store.asearch(
+        ["test_search"], filter={"author": "John Doe"}
+    )
+    assert len(john_doe_result) == 2
+    assert all(item.value["author"] == "John Doe" for item in john_doe_result)
 
-            page1 = await store.asearch(["test_search"], limit=2, offset=0)
-            page2 = await store.asearch(["test_search"], limit=2, offset=2)
-            all_items = page1 + page2
-            assert len(all_items) == 4
-            assert len(set(item.key for item in all_items)) == 4
-            empty = await store.asearch(
-                (
-                    "scoped",
-                    "assistant_id",
-                    "shared",
-                    "again",
-                    "maybe",
-                    "some-long",
-                    "6be5cb0e-2eb4-42e6-bb6b-fba3c269db25",
-                ),
-                limit=10,
-                offset=0,
-            )
-            assert len(empty) == 0
+    draft_result = await store.asearch(["test_search"], filter={"tags": ["draft"]})
+    assert len(draft_result) == 2
+    assert all("draft" in item.value["tags"] for item in draft_result)
 
-            # Test with a namespace beginning with a number (like a UUID)
-            uuid_namespace = (str(uuid.uuid4()), "documents")
-            uuid_item_id = "uuid_doc"
-            uuid_item_value = {
-                "title": "UUID Document",
-                "content": "This document has a UUID namespace.",
-            }
+    page1 = await store.asearch(["test_search"], limit=2, offset=0)
+    page2 = await store.asearch(["test_search"], limit=2, offset=2)
+    all_items = page1 + page2
+    assert len(all_items) == 4
+    assert len(set(item.key for item in all_items)) == 4
+    empty = await store.asearch(
+        (
+            "scoped",
+            "assistant_id",
+            "shared",
+            "again",
+            "maybe",
+            "some-long",
+            "6be5cb0e-2eb4-42e6-bb6b-fba3c269db25",
+        ),
+        limit=10,
+        offset=0,
+    )
+    assert len(empty) == 0
 
-            # Insert the item with the UUID namespace
-            await store.aput(uuid_namespace, uuid_item_id, uuid_item_value)
+    # Test with a namespace beginning with a number (like a UUID)
+    uuid_namespace = (str(uuid.uuid4()), "documents")
+    uuid_item_id = "uuid_doc"
+    uuid_item_value = {
+        "title": "UUID Document",
+        "content": "This document has a UUID namespace.",
+    }
 
-            # Retrieve the item to verify it was stored correctly
-            retrieved_item = await store.aget(uuid_namespace, uuid_item_id)
-            assert retrieved_item is not None
-            assert retrieved_item.namespace == uuid_namespace
-            assert retrieved_item.key == uuid_item_id
-            assert retrieved_item.value == uuid_item_value
+    # Insert the item with the UUID namespace
+    await store.aput(uuid_namespace, uuid_item_id, uuid_item_value)
 
-            # Search for the item using the UUID namespace
-            search_result = await store.asearch([uuid_namespace[0]])
-            assert len(search_result) == 1
-            assert search_result[0].key == uuid_item_id
-            assert search_result[0].value == uuid_item_value
+    # Retrieve the item to verify it was stored correctly
+    retrieved_item = await store.aget(uuid_namespace, uuid_item_id)
+    assert retrieved_item is not None
+    assert retrieved_item.namespace == uuid_namespace
+    assert retrieved_item.key == uuid_item_id
+    assert retrieved_item.value == uuid_item_value
 
-            # Clean up: delete the item with the UUID namespace
-            await store.adelete(uuid_namespace, uuid_item_id)
+    # Search for the item using the UUID namespace
+    search_result = await store.asearch([uuid_namespace[0]])
+    assert len(search_result) == 1
+    assert search_result[0].key == uuid_item_id
+    assert search_result[0].value == uuid_item_value
 
-            # Verify the item was deleted
-            deleted_item = await store.aget(uuid_namespace, uuid_item_id)
-            assert deleted_item is None
+    # Clean up: delete the item with the UUID namespace
+    await store.adelete(uuid_namespace, uuid_item_id)
 
-            for namespace in test_namespaces:
-                await store.adelete(namespace, f"item_{namespace[-1]}")
+    # Verify the item was deleted
+    deleted_item = await store.aget(uuid_namespace, uuid_item_id)
+    assert deleted_item is None
+
+    for namespace in test_namespaces:
+        await store.adelete(namespace, f"item_{namespace[-1]}")
