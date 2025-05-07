@@ -40,6 +40,8 @@ from tests.messages import _AnyIdHumanMessage
 
 pytestmark = pytest.mark.anyio
 
+REACT_TOOL_CALL_VERSIONS = ["v1", "v2"]
+
 
 class FakeToolCallingModel(BaseChatModel):
     tool_calls: Optional[list[list[ToolCall]]] = None
@@ -115,13 +117,21 @@ class FakeToolCallingModel(BaseChatModel):
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-def test_no_modifier(request: pytest.FixtureRequest, checkpointer_name: str) -> None:
+@pytest.mark.parametrize("version", REACT_TOOL_CALL_VERSIONS)
+def test_no_prompt(
+    request: pytest.FixtureRequest, checkpointer_name: str, version: str
+) -> None:
     checkpointer: BaseCheckpointSaver = request.getfixturevalue(
         "checkpointer_" + checkpointer_name
     )
     model = FakeToolCallingModel()
 
-    agent = create_react_agent(model, [], checkpointer=checkpointer)
+    agent = create_react_agent(
+        model,
+        [],
+        checkpointer=checkpointer,
+        version=version,
+    )
     inputs = [HumanMessage("hi?")]
     thread = {"configurable": {"thread_id": "123"}}
     response = agent.invoke({"messages": inputs}, thread, debug=True)
@@ -149,7 +159,7 @@ def test_no_modifier(request: pytest.FixtureRequest, checkpointer_name: str) -> 
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
-async def test_no_modifier_async(checkpointer_name: str) -> None:
+async def test_no_prompt_async(checkpointer_name: str) -> None:
     async with awith_checkpointer(checkpointer_name) as checkpointer:
         model = FakeToolCallingModel()
 

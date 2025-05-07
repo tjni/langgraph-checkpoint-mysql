@@ -2138,6 +2138,13 @@ def test_parent_command(request: pytest.FixtureRequest, checkpointer_name: str) 
             "source": "loop",
             "writes": {
                 "alice": {
+                    "messages": [
+                        _AnyIdHumanMessage(
+                            content="get user name",
+                            additional_kwargs={},
+                            response_metadata={},
+                        ),
+                    ],
                     "user_name": "Meow",
                 }
             },
@@ -2673,10 +2680,10 @@ def test_falsy_return_from_task(
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-def test_multiple_interrupts_imperative(
+def test_multiple_interrupts_functional(
     request: pytest.FixtureRequest, checkpointer_name: str, snapshot: SnapshotAssertion
 ):
-    """Test multiple interrupts with an imperative API."""
+    """Test multiple interrupts with functional API."""
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
 
     counter = 0
@@ -2903,7 +2910,7 @@ def test_multiple_subgraphs_functional(
 
     # Define addition subgraph
     @entrypoint()
-    def add(inputs):
+    def add(inputs: tuple[int, int]):
         a, b = inputs
         return a + b
 
@@ -2913,7 +2920,7 @@ def test_multiple_subgraphs_functional(
         return a * b
 
     @entrypoint()
-    def multiply(inputs):
+    def multiply(inputs: tuple[int, int]):
         return multiply_task(*inputs).result()
 
     # Test calling the same subgraph multiple times
@@ -2946,9 +2953,10 @@ def test_multiple_subgraphs_functional(
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-def test_multiple_subgraphs_mixed(
+def test_multiple_subgraphs_mixed_entrypoint(
     request: pytest.FixtureRequest, checkpointer_name: str
 ) -> None:
+    """Test calling multiple StateGraph subgraphs from an entrypoint."""
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
 
     class State(TypedDict):
@@ -3006,7 +3014,77 @@ def test_multiple_subgraphs_mixed(
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-def test_multiple_subgraphs_mixed_checkpointer(
+def test_multiple_subgraphs_mixed_state_graph(
+    request: pytest.FixtureRequest, checkpointer_name: str
+) -> None:
+    """Test calling multiple entrypoint "subgraphs" from a StateGraph."""
+    checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
+
+    class State(TypedDict):
+        a: int
+        b: int
+
+    class Output(TypedDict):
+        result: int
+
+    # Define addition subgraph
+    @entrypoint()
+    def add(inputs: tuple[int, int]):
+        a, b = inputs
+        return a + b
+
+    # Define multiplication subgraph using tasks
+    @task
+    def multiply_task(a, b):
+        return a * b
+
+    @entrypoint()
+    def multiply(inputs: tuple[int, int]):
+        return multiply_task(*inputs).result()
+
+    # Test calling the same subgraph multiple times
+    def call_same_subgraph(state):
+        result = add.invoke([state["a"], state["b"]])
+        another_result = add.invoke([result, 10])
+        return {"result": another_result}
+
+    parent_call_same_subgraph = (
+        StateGraph(State, output=Output)
+        .add_node(call_same_subgraph)
+        .add_edge(START, "call_same_subgraph")
+        .compile(checkpointer=checkpointer)
+    )
+    config = {"configurable": {"thread_id": "1"}}
+    assert parent_call_same_subgraph.invoke({"a": 2, "b": 3}, config) == {"result": 15}
+
+    # Test calling multiple subgraphs
+    class Output(TypedDict):
+        add_result: int
+        multiply_result: int
+
+    def call_multiple_subgraphs(state):
+        add_result = add.invoke([state["a"], state["b"]])
+        multiply_result = multiply.invoke([state["a"], state["b"]])
+        return {
+            "add_result": add_result,
+            "multiply_result": multiply_result,
+        }
+
+    parent_call_multiple_subgraphs = (
+        StateGraph(State, output=Output)
+        .add_node(call_multiple_subgraphs)
+        .add_edge(START, "call_multiple_subgraphs")
+        .compile(checkpointer=checkpointer)
+    )
+    config = {"configurable": {"thread_id": "2"}}
+    assert parent_call_multiple_subgraphs.invoke({"a": 2, "b": 3}, config) == {
+        "add_result": 5,
+        "multiply_result": 6,
+    }
+
+
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+def test_multiple_subgraphs_checkpointer(
     request: pytest.FixtureRequest, checkpointer_name: str
 ) -> None:
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
