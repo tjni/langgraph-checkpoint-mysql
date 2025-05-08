@@ -481,7 +481,7 @@ def test_imp_task(request: pytest.FixtureRequest, checkpointer_name: str) -> Non
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
     mapper_calls = 0
 
-    class Config:
+    class Configurable:
         model: str
 
     @task()
@@ -491,7 +491,7 @@ def test_imp_task(request: pytest.FixtureRequest, checkpointer_name: str) -> Non
         time.sleep(input / 100)
         return str(input) * 2
 
-    @entrypoint(checkpointer=checkpointer, config_schema=Config)
+    @entrypoint(checkpointer=checkpointer, config_schema=Configurable)
     def graph(input: list[int]) -> list[str]:
         futures = [mapper(i) for i in input]
         mapped = [f.result() for f in futures]
@@ -1186,6 +1186,9 @@ def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class_pydantic1(
         answer: Optional[str] = None
         docs: Optional[list[str]] = None
 
+    class UpdateDocs34(BaseModel):
+        docs: list[str] = ["doc3", "doc4"]
+
     def rewrite_query(data: State) -> State:
         return {"query": f"query: {data.query}"}
 
@@ -1197,7 +1200,7 @@ def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class_pydantic1(
 
     def retriever_two(data: State) -> State:
         time.sleep(0.1)
-        return {"docs": ["doc3", "doc4"]}
+        return UpdateDocs34()
 
     def qa(data: State) -> State:
         return {"answer": ",".join(data.docs)}
@@ -1293,7 +1296,7 @@ def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class_pydantic2(
     request: pytest.FixtureRequest,
     checkpointer_name: str,
 ) -> None:
-    from pydantic import BaseModel, ConfigDict, ValidationError
+    from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
     setup = mocker.Mock()
@@ -1346,6 +1349,9 @@ def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class_pydantic2(
         answer: Optional[str] = None
         docs: Optional[list[str]] = None
 
+    class UpdateDocs34(BaseModel):
+        docs: list[str] = Field(default_factory=lambda: ["doc3", "doc4"])
+
     class Input(BaseModel):
         query: str
         inner: InnerObject
@@ -1365,7 +1371,7 @@ def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class_pydantic2(
 
     def retriever_two(data: State) -> State:
         time.sleep(0.1)
-        return {"docs": ["doc3", "doc4"]}
+        return UpdateDocs34()
 
     def qa(data: State) -> State:
         return {"answer": ",".join(data.docs)}
@@ -1453,6 +1459,139 @@ def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class_pydantic2(
                 "checkpoint_ns": "",
             }
         }
+
+
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class_pydantic_input(
+    snapshot: SnapshotAssertion,
+    mocker: MockerFixture,
+    request: pytest.FixtureRequest,
+    checkpointer_name: str,
+) -> None:
+    from pydantic import BaseModel
+
+    checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
+
+    def sorted_add(
+        x: list[str], y: Union[list[str], list[tuple[str, str]]]
+    ) -> list[str]:
+        if isinstance(y[0], tuple):
+            for rem, _ in y:
+                x.remove(rem)
+            y = [t[1] for t in y]
+        return sorted(operator.add(x, y))
+
+    class InnerObject(BaseModel):
+        yo: int
+
+    class QueryModel(BaseModel):
+        query: str
+
+    class State(QueryModel):
+        inner: InnerObject
+        answer: Optional[str] = None
+        docs: Annotated[list[str], sorted_add]
+
+    class StateUpdate(BaseModel):
+        query: Optional[str] = None
+        answer: Optional[str] = None
+        docs: Optional[list[str]] = None
+
+    class Input(QueryModel):
+        inner: InnerObject
+
+    class Output(BaseModel):
+        answer: str
+        docs: list[str]
+
+    def rewrite_query(data: State) -> State:
+        return {"query": f"query: {data.query}"}
+
+    def analyzer_one(data: State) -> State:
+        return StateUpdate(query=f"analyzed: {data.query}")
+
+    def retriever_one(data: State) -> State:
+        return {"docs": ["doc1", "doc2"]}
+
+    def retriever_two(data: State) -> State:
+        time.sleep(0.1)
+        return {"docs": ["doc3", "doc4"]}
+
+    def qa(data: State) -> State:
+        return {"answer": ",".join(data.docs)}
+
+    def decider(data: State) -> str:
+        assert isinstance(data, State)
+        return "retriever_two"
+
+    workflow = StateGraph(State, input=Input, output=Output)
+
+    workflow.add_node("rewrite_query", rewrite_query)
+    workflow.add_node("analyzer_one", analyzer_one)
+    workflow.add_node("retriever_one", retriever_one)
+    workflow.add_node("retriever_two", retriever_two)
+    workflow.add_node("qa", qa)
+
+    workflow.set_entry_point("rewrite_query")
+    workflow.add_edge("rewrite_query", "analyzer_one")
+    workflow.add_edge("analyzer_one", "retriever_one")
+    workflow.add_conditional_edges(
+        "rewrite_query", decider, {"retriever_two": "retriever_two"}
+    )
+    workflow.add_edge(["retriever_one", "retriever_two"], "qa")
+    workflow.set_finish_point("qa")
+
+    app = workflow.compile()
+
+    assert app.invoke(
+        Input(query="what is weather in sf", inner=InnerObject(yo=1))
+    ) == {
+        "docs": ["doc1", "doc2", "doc3", "doc4"],
+        "answer": "doc1,doc2,doc3,doc4",
+    }
+
+    assert [
+        *app.stream(Input(query="what is weather in sf", inner=InnerObject(yo=1)))
+    ] == [
+        {"rewrite_query": {"query": "query: what is weather in sf"}},
+        {"analyzer_one": {"query": "analyzed: query: what is weather in sf"}},
+        {"retriever_two": {"docs": ["doc3", "doc4"]}},
+        {"retriever_one": {"docs": ["doc1", "doc2"]}},
+        {"qa": {"answer": "doc1,doc2,doc3,doc4"}},
+    ]
+
+    app_w_interrupt = workflow.compile(
+        checkpointer=checkpointer,
+        interrupt_after=["retriever_one"],
+    )
+    config = {"configurable": {"thread_id": "1"}}
+
+    assert [
+        c
+        for c in app_w_interrupt.stream(
+            Input(query="what is weather in sf", inner=InnerObject(yo=1)), config
+        )
+    ] == [
+        {"rewrite_query": {"query": "query: what is weather in sf"}},
+        {"analyzer_one": {"query": "analyzed: query: what is weather in sf"}},
+        {"retriever_two": {"docs": ["doc3", "doc4"]}},
+        {"retriever_one": {"docs": ["doc1", "doc2"]}},
+        {"__interrupt__": ()},
+    ]
+
+    assert [c for c in app_w_interrupt.stream(None, config)] == [
+        {"qa": {"answer": "doc1,doc2,doc3,doc4"}},
+    ]
+
+    assert app_w_interrupt.update_state(
+        config, {"docs": ["doc5"]}, as_node="rewrite_query"
+    ) == {
+        "configurable": {
+            "thread_id": "1",
+            "checkpoint_id": AnyStr(),
+            "checkpoint_ns": "",
+        }
+    }
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
@@ -1610,6 +1749,58 @@ def test_subgraph_checkpoint_true(
             },
         ),
     ]
+
+
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+def test_subgraph_checkpoint_true_interrupt(
+    request: pytest.FixtureRequest, checkpointer_name: str
+) -> None:
+    checkpointer = request.getfixturevalue("checkpointer_" + checkpointer_name)
+
+    # Define subgraph
+    class SubgraphState(TypedDict):
+        # note that none of these keys are shared with the parent graph state
+        bar: str
+        baz: str
+
+    def subgraph_node_1(state: SubgraphState):
+        baz_value = interrupt("Provide baz value")
+        return {"baz": baz_value}
+
+    def subgraph_node_2(state: SubgraphState):
+        return {"bar": state["bar"] + state["baz"]}
+
+    subgraph_builder = StateGraph(SubgraphState)
+    subgraph_builder.add_node(subgraph_node_1)
+    subgraph_builder.add_node(subgraph_node_2)
+    subgraph_builder.add_edge(START, "subgraph_node_1")
+    subgraph_builder.add_edge("subgraph_node_1", "subgraph_node_2")
+    subgraph = subgraph_builder.compile(checkpointer=True)
+
+    class ParentState(TypedDict):
+        foo: str
+
+    def node_1(state: ParentState):
+        return {"foo": "hi! " + state["foo"]}
+
+    def node_2(state: ParentState):
+        response = subgraph.invoke({"bar": state["foo"]})
+        return {"foo": response["bar"]}
+
+    builder = StateGraph(ParentState)
+    builder.add_node("node_1", node_1)
+    builder.add_node("node_2", node_2)
+    builder.add_edge(START, "node_1")
+    builder.add_edge("node_1", "node_2")
+
+    graph = builder.compile(checkpointer=checkpointer)
+    config = {"configurable": {"thread_id": "1"}}
+
+    assert graph.invoke({"foo": "foo"}, config) == {"foo": "hi! foo"}
+    assert graph.get_state(config, subgraphs=True).tasks[0].state.values == {
+        "bar": "hi! foo"
+    }
+    assert graph.invoke(Command(resume="baz"), config) == {"foo": "hi! foobaz"}
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
@@ -2138,13 +2329,6 @@ def test_parent_command(request: pytest.FixtureRequest, checkpointer_name: str) 
             "source": "loop",
             "writes": {
                 "alice": {
-                    "messages": [
-                        _AnyIdHumanMessage(
-                            content="get user name",
-                            additional_kwargs={},
-                            response_metadata={},
-                        ),
-                    ],
                     "user_name": "Meow",
                 }
             },
@@ -3160,3 +3344,156 @@ def test_multiple_subgraphs_checkpointer(
         ),
         ((), {"parent_node": {"parent_counter": 7}}),
     ]
+
+
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+def test_stream_messages_dedupe_state(
+    request: pytest.FixtureRequest, checkpointer_name: str
+) -> None:
+    from langchain_core.messages import AIMessage
+
+    checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
+    to_emit = [AIMessage("bye", id="1"), AIMessage("bye again", id="2")]
+
+    def call_model(state):
+        return {"messages": to_emit.pop(0)}
+
+    def route(state):
+        return Command(goto="node_2", graph=Command.PARENT)
+
+    subgraph = (
+        StateGraph(MessagesState)
+        .add_node(call_model)
+        .add_node(route)
+        .add_edge(START, "call_model")
+        .add_edge("call_model", "route")
+        .compile()
+    )
+
+    graph = (
+        StateGraph(MessagesState)
+        .add_node("node_1", subgraph)
+        .add_node("node_2", lambda state: state)
+        .add_edge(START, "node_1")
+        .compile(checkpointer=checkpointer)
+    )
+
+    thread1 = {"configurable": {"thread_id": "1"}}
+
+    chunks = [
+        chunk
+        for ns, chunk in graph.stream(
+            {"messages": "hi"}, thread1, stream_mode="messages", subgraphs=True
+        )
+    ]
+
+    assert len(chunks) == 1
+    assert chunks[0][0] == AIMessage("bye", id="1")
+    assert chunks[0][1]["langgraph_node"] == "call_model"
+
+    chunks = [
+        chunk
+        for ns, chunk in graph.stream(
+            {"messages": "hi again"},
+            thread1,
+            stream_mode="messages",
+            subgraphs=True,
+        )
+    ]
+
+    assert len(chunks) == 1
+    assert chunks[0][0] == AIMessage("bye again", id="2")
+    assert chunks[0][1]["langgraph_node"] == "call_model"
+
+
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+def test_interrupt_subgraph_reenter_checkpointer_true(
+    request: pytest.FixtureRequest, checkpointer_name: str
+) -> None:
+    checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
+
+    class SubgraphState(TypedDict):
+        foo: str
+        bar: str
+
+    class ParentState(TypedDict):
+        foo: str
+        counter: int
+
+    called = []
+    bar_values = []
+
+    def subnode_1(state: SubgraphState):
+        called.append("subnode_1")
+        bar_values.append(state.get("bar"))
+        return {"foo": "subgraph_1"}
+
+    def subnode_2(state: SubgraphState):
+        called.append("subnode_2")
+        value = interrupt("Provide value")
+        value += "baz"
+        return {"foo": "subgraph_2", "bar": value}
+
+    subgraph = (
+        StateGraph(SubgraphState)
+        .add_node(subnode_1)
+        .add_node(subnode_2)
+        .add_edge(START, "subnode_1")
+        .add_edge("subnode_1", "subnode_2")
+        .compile(checkpointer=True)
+    )
+
+    def call_subgraph(state: ParentState):
+        called.append("call_subgraph")
+        return subgraph.invoke(state)
+
+    def node(state: ParentState):
+        called.append("parent")
+        if state["counter"] < 1:
+            return Command(
+                goto="call_subgraph", update={"counter": state["counter"] + 1}
+            )
+
+        return {"foo": state["foo"] + "|" + "parent"}
+
+    parent = (
+        StateGraph(ParentState)
+        .add_node(call_subgraph)
+        .add_node(node)
+        .add_edge(START, "call_subgraph")
+        .add_edge("call_subgraph", "node")
+        .compile(checkpointer=checkpointer)
+    )
+
+    config = {"configurable": {"thread_id": "1"}}
+    assert parent.invoke({"foo": "", "counter": 0}, config) == {"foo": "", "counter": 0}
+    assert parent.invoke(Command(resume="bar"), config) == {
+        "foo": "subgraph_2",
+        "counter": 1,
+    }
+    assert parent.invoke(Command(resume="qux"), config) == {
+        "foo": "subgraph_2|parent",
+        "counter": 1,
+    }
+    assert called == [
+        "call_subgraph",
+        "subnode_1",
+        "subnode_2",
+        "call_subgraph",
+        "subnode_2",
+        "parent",
+        "call_subgraph",
+        "subnode_1",
+        "subnode_2",
+        "call_subgraph",
+        "subnode_2",
+        "parent",
+    ]
+
+    # invoke parent again (new turn)
+    assert parent.invoke({"foo": "meow", "counter": 0}, config) == {
+        "foo": "meow",
+        "counter": 0,
+    }
+    # confirm that we preserve the state values from the previous invocation
+    assert bar_values == [None, "barbaz", "quxbaz"]

@@ -1521,8 +1521,6 @@
   	__start__([<p>__start__</p>]):::first
   	router_node(router_node)
   	normal_llm_node(normal_llm_node)
-  	weather_graph_model_node(model_node)
-  	weather_graph_weather_node(weather_node<hr/><small><em>__interrupt = before</em></small>)
   	__end__([<p>__end__</p>]):::last
   	__start__ --> router_node;
   	normal_llm_node --> __end__;
@@ -1531,6 +1529,8 @@
   	router_node -.-> weather_graph_model_node;
   	router_node -.-> __end__;
   	subgraph weather_graph
+  	weather_graph_model_node(model_node)
+  	weather_graph_weather_node(weather_node<hr/><small><em>__interrupt = before</em></small>)
   	weather_graph_model_node --> weather_graph_weather_node;
   	end
   	classDef default fill:#f2f0ff,line-height:1.2
@@ -1546,8 +1546,6 @@
   	__start__([<p>__start__</p>]):::first
   	router_node(router_node)
   	normal_llm_node(normal_llm_node)
-  	weather_graph_model_node(model_node)
-  	weather_graph_weather_node(weather_node<hr/><small><em>__interrupt = before</em></small>)
   	__end__([<p>__end__</p>]):::last
   	__start__ --> router_node;
   	normal_llm_node --> __end__;
@@ -1556,6 +1554,8 @@
   	router_node -.-> weather_graph_model_node;
   	router_node -.-> __end__;
   	subgraph weather_graph
+  	weather_graph_model_node(model_node)
+  	weather_graph_weather_node(weather_node<hr/><small><em>__interrupt = before</em></small>)
   	weather_graph_model_node --> weather_graph_weather_node;
   	end
   	classDef default fill:#f2f0ff,line-height:1.2
@@ -1571,8 +1571,6 @@
   	__start__([<p>__start__</p>]):::first
   	router_node(router_node)
   	normal_llm_node(normal_llm_node)
-  	weather_graph_model_node(model_node)
-  	weather_graph_weather_node(weather_node<hr/><small><em>__interrupt = before</em></small>)
   	__end__([<p>__end__</p>]):::last
   	__start__ --> router_node;
   	normal_llm_node --> __end__;
@@ -1581,6 +1579,8 @@
   	router_node -.-> weather_graph_model_node;
   	router_node -.-> __end__;
   	subgraph weather_graph
+  	weather_graph_model_node(model_node)
+  	weather_graph_weather_node(weather_node<hr/><small><em>__interrupt = before</em></small>)
   	weather_graph_model_node --> weather_graph_weather_node;
   	end
   	classDef default fill:#f2f0ff,line-height:1.2
