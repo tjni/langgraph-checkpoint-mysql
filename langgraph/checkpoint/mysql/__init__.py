@@ -13,6 +13,7 @@ from langgraph.checkpoint.base import (
     CheckpointMetadata,
     CheckpointTuple,
     get_checkpoint_id,
+    get_checkpoint_metadata,
 )
 from langgraph.checkpoint.mysql import _internal
 from langgraph.checkpoint.mysql.base import BaseMySQLSaver
@@ -325,17 +326,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                     checkpoint["id"],
                     checkpoint_id,
                     json.dumps(self._dump_checkpoint(copy)),
-                    self._dump_metadata(
-                        {
-                            **{
-                                k: v
-                                for k, v in config["configurable"].items()
-                                if not k.startswith("__")
-                            },
-                            **config.get("metadata", {}),
-                            **metadata,
-                        }
-                    ),
+                    self._dump_metadata(get_checkpoint_metadata(config, metadata)),
                 ),
             )
         return next_config
