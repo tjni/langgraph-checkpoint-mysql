@@ -458,7 +458,17 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
                     checkpoint_ns,
                     checkpoint_ns,
                     json.dumps(self._dump_checkpoint(copy)),
-                    self._dump_metadata(metadata),
+                    self._dump_metadata(
+                        {
+                            **{
+                                k: v
+                                for k, v in config["configurable"].items()
+                                if not k.startswith("__")
+                            },
+                            **config.get("metadata", {}),
+                            **metadata,
+                        }
+                    ),
                 ),
             )
         return next_config
@@ -721,7 +731,17 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
                     checkpoint_ns,
                     checkpoint_ns,
                     json.dumps(self._dump_checkpoint(copy)),
-                    self._dump_metadata(metadata),
+                    self._dump_metadata(
+                        {
+                            **{
+                                k: v
+                                for k, v in config["configurable"].items()
+                                if not k.startswith("__")
+                            },
+                            **config.get("metadata", {}),
+                            **metadata,
+                        }
+                    ),
                 ),
             )
         return next_config
