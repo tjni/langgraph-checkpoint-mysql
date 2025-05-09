@@ -269,7 +269,7 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
         return {
             k: self.serde.loads_typed((t, v))
             for k, t, v in blob_values
-            if t != "empty" and v
+            if t != "empty"
         }
 
     def _dump_blobs(

@@ -69,7 +69,11 @@ def deserialize_channel_values(value: str) -> list[tuple[str, str, Optional[byte
     values = (MySQLChannelValue(*channel_value) for channel_value in json.loads(value))
 
     return [
-        (db.channel, db.type_, decode_base64_blob(db.blob) if db.blob else None)
+        (
+            db.channel,
+            db.type_,
+            decode_base64_blob(db.blob) if db.blob is not None else None,
+        )
         for db in values
     ]
 
