@@ -364,3 +364,24 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                     writes,
                 ),
             )
+
+    def delete_thread(self, thread_id: str) -> None:
+        """Delete all checkpoints and writes associated with a thread ID.
+        Args:
+            thread_id (str): The thread ID to delete.
+        Returns:
+            None
+        """
+        with self._cursor(pipeline=True) as cur:
+            cur.execute(
+                "DELETE FROM checkpoints WHERE thread_id = %s",
+                (str(thread_id),),
+            )
+            cur.execute(
+                "DELETE FROM checkpoint_blobs WHERE thread_id = %s",
+                (str(thread_id),),
+            )
+            cur.execute(
+                "DELETE FROM checkpoint_writes WHERE thread_id = %s",
+                (str(thread_id),),
+            )
