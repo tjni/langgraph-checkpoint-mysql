@@ -1550,4 +1550,4 @@ pymysql = ["pymysql"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.0,<4.0"
-content-hash = "3a68b43062ebf10c25993a7c37b0d43d53e51d61a0d6c19b908d0327fa2c41a1"
+content-hash = "92f352b27d77806ee3d411e8260f2110770e56fde2412160d572e3e19a78b7da"
