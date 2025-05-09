@@ -1,4 +1,5 @@
 import urllib.parse
+import warnings
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Optional, cast
@@ -63,6 +64,19 @@ class AsyncMySaver(BaseAsyncMySQLSaver[Connection, DictCursor]):
 
 
 class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
+    def __init__(
+        self,
+        conn: Connection,
+        serde: Optional[SerializerProtocol] = None,
+    ) -> None:
+        warnings.warn(
+            "ShallowAsyncMySaver is deprecated as of version 2.0.15 and will be removed in 3.0.0. "
+            "Use AsyncMysqlSaver instead, and invoke the graph with `await graph.ainvoke(..., checkpoint_during=False)`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(conn, serde=serde)
+
     @classmethod
     @asynccontextmanager
     async def from_conn_string(

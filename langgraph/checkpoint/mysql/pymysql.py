@@ -1,16 +1,17 @@
 import urllib.parse
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Optional
 
 import pymysql
-import pymysql.constants.ER
 from pymysql.cursors import DictCursor
 from typing_extensions import Self, override
 
-from langgraph.checkpoint.mysql import BaseSyncMySQLSaver
+from langgraph.checkpoint.mysql import BaseSyncMySQLSaver, _internal
 from langgraph.checkpoint.mysql import Conn as BaseConn
 from langgraph.checkpoint.mysql.shallow import BaseShallowSyncMySQLSaver
+from langgraph.checkpoint.serde.base import SerializerProtocol
 
 Conn = BaseConn[pymysql.Connection]  # type: ignore
 
@@ -64,6 +65,19 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
 
 
 class ShallowPyMySQLSaver(BaseShallowSyncMySQLSaver):
+    def __init__(
+        self,
+        conn: _internal.Conn,
+        serde: Optional[SerializerProtocol] = None,
+    ) -> None:
+        warnings.warn(
+            "ShallowPyMySQLSaver is deprecated as of version 2.0.15 and will be removed in 3.0.0. "
+            "Use PyMySQLSaver instead, and invoke the graph with `await graph.ainvoke(..., checkpoint_during=False)`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(conn, serde=serde)
+
     @classmethod
     @contextmanager
     def from_conn_string(
