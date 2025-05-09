@@ -2258,7 +2258,7 @@ def test_doubly_nested_graph_interrupts(
     ]
 
 
-@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+@pytest.mark.parametrize("checkpointer_name", REGULAR_CHECKPOINTERS_SYNC)
 def test_remove_message_via_state_update(
     request: pytest.FixtureRequest, checkpointer_name: str
 ) -> None:
@@ -2287,6 +2287,12 @@ def test_remove_message_via_state_update(
 
     assert len(updated_state.values) == 1
     assert updated_state.values[-1].content == "Hi"
+
+    app.checkpointer.delete_thread(config["configurable"]["thread_id"])
+
+    # Verify that the message was removed from the checkpointer
+    assert app.checkpointer.get_tuple(config) is None
+    assert [*app.get_state_history(config)] == []
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
@@ -2907,7 +2913,7 @@ def test_multiple_interrupt_state_persistence(
     assert state.values["steps"] == ["step1", "step2"]
 
 
-@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+@pytest.mark.parametrize("checkpointer_name", REGULAR_CHECKPOINTERS_SYNC)
 def test_checkpoint_recovery(request: pytest.FixtureRequest, checkpointer_name: str):
     """Test recovery from checkpoints after failures."""
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
@@ -2959,6 +2965,11 @@ def test_checkpoint_recovery(request: pytest.FixtureRequest, checkpointer_name: 
     # Verify the error was recorded in checkpoint
     failed_checkpoint = next(c for c in history if c.tasks and c.tasks[0].error)
     assert "RuntimeError('Simulated failure')" in failed_checkpoint.tasks[0].error
+
+    # Verify delete leaves it empty
+    graph.checkpointer.delete_thread(config["configurable"]["thread_id"])
+    assert graph.checkpointer.get_tuple(config) is None
+    assert [*graph.get_state_history(config)] == []
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
