@@ -5,14 +5,13 @@ import random
 import sys
 import uuid
 from collections import Counter
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from time import perf_counter
 from typing import (
     Annotated,
     Any,
-    AsyncIterator,
-    Dict,
     Literal,
     Optional,
     Union,
@@ -24,6 +23,7 @@ from langchain_core.runnables import (
     RunnableConfig,
 )
 from langchain_core.utils.aiter import aclosing
+from pydantic import BaseModel, ConfigDict, ValidationError
 from pytest_mock import MockerFixture
 from typing_extensions import TypedDict
 
@@ -105,6 +105,9 @@ async def test_dynamic_interrupt(checkpointer_name: str) -> None:
     ) == {
         "my_key": "value",
         "market": "DE",
+        "__interrupt__": [
+            Interrupt(value="Just because...", resumable=True, ns=[AnyStr("tool_two:")])
+        ],
     }
     assert tool_two_node_count == 1, "interrupts aren't retried"
     assert len(tracer.runs) == 1
@@ -221,6 +224,13 @@ async def test_dynamic_interrupt(checkpointer_name: str) -> None:
                     -1
                 ].config
             ),
+            interrupts=(
+                Interrupt(
+                    value="Just because...",
+                    resumable=True,
+                    ns=[AnyStr("tool_two:")],
+                ),
+            ),
         )
 
         # clear the interrupt and next tasks
@@ -247,6 +257,7 @@ async def test_dynamic_interrupt(checkpointer_name: str) -> None:
                     -1
                 ].config
             ),
+            interrupts=(),
         )
 
 
@@ -287,6 +298,13 @@ async def test_dynamic_interrupt_subgraph(checkpointer_name: str) -> None:
     ) == {
         "my_key": "value",
         "market": "DE",
+        "__interrupt__": [
+            Interrupt(
+                value="Just because...",
+                resumable=True,
+                ns=[AnyStr("tool_two:"), AnyStr("do:")],
+            )
+        ],
     }
     assert tool_two_node_count == 1, "interrupts aren't retried"
     assert len(tracer.runs) == 1
@@ -412,6 +430,13 @@ async def test_dynamic_interrupt_subgraph(checkpointer_name: str) -> None:
                     c async for c in tool_two.checkpointer.alist(thread1root, limit=2)
                 ][-1].config
             ),
+            interrupts=(
+                Interrupt(
+                    value="Just because...",
+                    resumable=True,
+                    ns=[AnyStr("tool_two:"), AnyStr("do:")],
+                ),
+            ),
         )
 
         # clear the interrupt and next tasks
@@ -438,6 +463,7 @@ async def test_dynamic_interrupt_subgraph(checkpointer_name: str) -> None:
                     c async for c in tool_two.checkpointer.alist(thread1root, limit=2)
                 ][-1].config
             ),
+            interrupts=(),
         )
 
 
@@ -477,6 +503,9 @@ async def test_copy_checkpoint(checkpointer_name: str) -> None:
     ) == {
         "my_key": "value one",
         "market": "DE",
+        "__interrupt__": [
+            Interrupt(value="Just because...", resumable=True, ns=[AnyStr("tool_two:")])
+        ],
     }
     assert tool_two_node_count == 1, "interrupts aren't retried"
     assert len(tracer.runs) == 1
@@ -538,6 +567,13 @@ async def test_copy_checkpoint(checkpointer_name: str) -> None:
         ) == {
             "my_key": "value ⛰️ one",
             "market": "DE",
+            "__interrupt__": [
+                Interrupt(
+                    value="Just because...",
+                    resumable=True,
+                    ns=[AnyStr("tool_two:")],
+                )
+            ],
         }
 
         if "shallow" not in checkpointer_name:
@@ -566,7 +602,7 @@ async def test_copy_checkpoint(checkpointer_name: str) -> None:
                 PregelTask(
                     AnyStr(),
                     name="tool_one",
-                    path=("__pregel_push", 0),
+                    path=("__pregel_push", 0, False),
                     error=None,
                     interrupts=(),
                     state=None,
@@ -601,6 +637,13 @@ async def test_copy_checkpoint(checkpointer_name: str) -> None:
                     -1
                 ].config
             ),
+            interrupts=(
+                Interrupt(
+                    value="Just because...",
+                    resumable=True,
+                    ns=[AnyStr("tool_two:")],
+                ),
+            ),
         )
 
         if "shallow" in checkpointer_name:
@@ -618,7 +661,7 @@ async def test_copy_checkpoint(checkpointer_name: str) -> None:
                 PregelTask(
                     AnyStr(),
                     "tool_one",
-                    (PUSH, 0),
+                    (PUSH, 0, False),
                     result=None,
                 ),
                 PregelTask(
@@ -642,7 +685,10 @@ async def test_copy_checkpoint(checkpointer_name: str) -> None:
                     -1
                 ].parent_config
             ),
+            interrupts=(),
         )
+
+
 @NEEDS_CONTEXTVARS
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_node_not_cancelled_on_other_node_interrupted(
@@ -680,13 +726,29 @@ async def test_node_not_cancelled_on_other_node_interrupted(
 
         # writes from "awhile" are applied to last chunk
         assert await graph.ainvoke({"hello": "world"}, thread) == {
-            "hello": "world again"
+            "hello": "world again",
+            "__interrupt__": [
+                Interrupt(
+                    value="I am bad",
+                    resumable=True,
+                    ns=[AnyStr("bad:")],
+                )
+            ],
         }
 
         assert not inner_task_cancelled
         assert awhiles == 1
 
-        assert await graph.ainvoke(None, thread, debug=True) == {"hello": "world again"}
+        assert await graph.ainvoke(None, thread, debug=True) == {
+            "hello": "world again",
+            "__interrupt__": [
+                Interrupt(
+                    value="I am bad",
+                    resumable=True,
+                    ns=[AnyStr("bad:")],
+                )
+            ],
+        }
 
         assert not inner_task_cancelled
         assert awhiles == 1
@@ -927,7 +989,7 @@ async def test_pending_writes_resume(
         value: Annotated[int, operator.add]
 
     class AwhileMaker:
-        def __init__(self, sleep: float, rtn: Union[Dict, Exception]) -> None:
+        def __init__(self, sleep: float, rtn: Union[dict, Exception]) -> None:
             self.sleep = sleep
             self.rtn = rtn
             self.reset()
@@ -1692,15 +1754,15 @@ async def test_send_dedupe_on_resume(
         thread1 = {"configurable": {"thread_id": "1"}}
         assert await graph.ainvoke(
             ["0"], thread1, checkpoint_during=checkpoint_during
-        ) == [
-            "0",
-            "1",
-            "3.1",
-            "2|Command(goto=Send(node='2', arg=3))",
-            "2|Command(goto=Send(node='flaky', arg=4))",
-            "3",
-            "2|3",
-        ]
+        ) == {
+            "__interrupt__": [
+                Interrupt(
+                    value="Bahh",
+                    resumable=False,
+                    ns=None,
+                ),
+            ],
+        }
         assert builder.nodes["2"].runnable.func.ticks == 3
         assert builder.nodes["flaky"].runnable.func.ticks == 1
         # resume execution
@@ -1761,6 +1823,7 @@ async def test_send_dedupe_on_resume(
                     }
                 },
                 tasks=(),
+                interrupts=(),
             ),
             StateSnapshot(
                 values=[
@@ -1807,6 +1870,7 @@ async def test_send_dedupe_on_resume(
                         result=["3"],
                     ),
                 ),
+                interrupts=(),
             ),
             StateSnapshot(
                 values=[
@@ -1849,7 +1913,7 @@ async def test_send_dedupe_on_resume(
                     PregelTask(
                         id=AnyStr(),
                         name="2",
-                        path=("__pregel_push", 0),
+                        path=("__pregel_push", 0, False),
                         error=None,
                         interrupts=(),
                         state=None,
@@ -1858,7 +1922,7 @@ async def test_send_dedupe_on_resume(
                     PregelTask(
                         id=AnyStr(),
                         name="flaky",
-                        path=("__pregel_push", 1),
+                        path=("__pregel_push", 1, False),
                         error=None,
                         interrupts=(Interrupt(value="Bahh", resumable=False, ns=None),),
                         state=None,
@@ -1874,6 +1938,7 @@ async def test_send_dedupe_on_resume(
                         result=["3"],
                     ),
                 ),
+                interrupts=(Interrupt(value="Bahh", resumable=False, ns=None),),
             ),
             StateSnapshot(
                 values=["0", "1"],
@@ -1904,7 +1969,7 @@ async def test_send_dedupe_on_resume(
                     PregelTask(
                         id=AnyStr(),
                         name="2",
-                        path=("__pregel_push", 0),
+                        path=("__pregel_push", 0, False),
                         error=None,
                         interrupts=(),
                         state=None,
@@ -1913,7 +1978,7 @@ async def test_send_dedupe_on_resume(
                     PregelTask(
                         id=AnyStr(),
                         name="2",
-                        path=("__pregel_push", 1),
+                        path=("__pregel_push", 1, False),
                         error=None,
                         interrupts=(),
                         state=None,
@@ -1929,6 +1994,7 @@ async def test_send_dedupe_on_resume(
                         result=["3.1"],
                     ),
                 ),
+                interrupts=(),
             ),
             StateSnapshot(
                 values=["0"],
@@ -1966,6 +2032,7 @@ async def test_send_dedupe_on_resume(
                         result=["1"],
                     ),
                 ),
+                interrupts=(),
             ),
             StateSnapshot(
                 values=[],
@@ -1997,6 +2064,7 @@ async def test_send_dedupe_on_resume(
                         result=["0"],
                     ),
                 ),
+                interrupts=(),
             ),
         ]
         if checkpoint_during:
@@ -2004,7 +2072,6 @@ async def test_send_dedupe_on_resume(
         else:
             assert history[0] == expected_history[0]
             assert history[1] == expected_history[2]
-
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_send_react_interrupt(checkpointer_name: str) -> None:
@@ -2192,13 +2259,14 @@ async def test_send_react_interrupt(checkpointer_name: str) -> None:
                 PregelTask(
                     id=AnyStr(),
                     name="foo",
-                    path=("__pregel_push", 0),
+                    path=("__pregel_push", 0, False),
                     error=None,
                     interrupts=(),
                     state=None,
                     result=None,
                 ),
             ),
+            interrupts=(),
         )
 
         # remove the tool call, clearing the pending task
@@ -2252,6 +2320,7 @@ async def test_send_react_interrupt(checkpointer_name: str) -> None:
                 }
             ),
             tasks=(),
+            interrupts=(),
         )
 
         # tool call not executed
@@ -2350,13 +2419,14 @@ async def test_send_react_interrupt(checkpointer_name: str) -> None:
                 PregelTask(
                     id=AnyStr(),
                     name="foo",
-                    path=("__pregel_push", 0),
+                    path=("__pregel_push", 0, False),
                     error=None,
                     interrupts=(),
                     state=None,
                     result=None,
                 ),
             ),
+            interrupts=(),
         )
 
         # replace the tool call, should clear previous send, create new one
@@ -2441,13 +2511,14 @@ async def test_send_react_interrupt(checkpointer_name: str) -> None:
                 PregelTask(
                     id=AnyStr(),
                     name="foo",
-                    path=("__pregel_push", 0),
+                    path=("__pregel_push", 0, False),
                     error=None,
                     interrupts=(),
                     state=None,
                     result=None,
                 ),
             ),
+            interrupts=(),
         )
 
         # prev tool call not executed, new tool call is
@@ -2656,13 +2727,14 @@ async def test_send_react_interrupt_control(
                 PregelTask(
                     id=AnyStr(),
                     name="foo",
-                    path=("__pregel_push", 0),
+                    path=("__pregel_push", 0, False),
                     error=None,
                     interrupts=(),
                     state=None,
                     result=None,
                 ),
             ),
+            interrupts=(),
         )
 
         # remove the tool call, clearing the pending task
@@ -2716,6 +2788,7 @@ async def test_send_react_interrupt_control(
                 }
             ),
             tasks=(),
+            interrupts=(),
         )
 
         # tool call not executed
@@ -3231,8 +3304,6 @@ async def test_in_one_fan_out_state_graph_waiting_edge_via_branch(
 async def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class(
     mocker: MockerFixture, checkpointer_name: str
 ) -> None:
-    from pydantic.v1 import BaseModel, ValidationError
-
     setup = mocker.Mock()
     teardown = mocker.Mock()
 
@@ -3267,8 +3338,7 @@ async def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class(
         return sorted(operator.add(x, y))
 
     class State(BaseModel):
-        class Config:
-            arbitrary_types_allowed = True
+        model_config = ConfigDict(arbitrary_types_allowed=True)
 
         query: str
         answer: Optional[str] = None
@@ -3405,6 +3475,7 @@ async def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class(
                     }
                 }
             ),
+            interrupts=(),
         )
 
         async with assert_ctx_once():
@@ -3423,8 +3494,6 @@ async def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class(
 async def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class_pydantic2(
     checkpointer_name: str
 ) -> None:
-    from pydantic import BaseModel, ValidationError
-
     def sorted_add(
         x: list[str], y: Union[list[str], list[tuple[str, str]]]
     ) -> list[str]:
@@ -3761,7 +3830,16 @@ async def test_subgraph_checkpoint_true_interrupt(
 
         assert await graph.ainvoke(
             {"foo": "foo"}, config, checkpoint_during=checkpoint_during
-        ) == {"foo": "hi! foo"}
+        ) == {
+            "foo": "hi! foo",
+            "__interrupt__": [
+                Interrupt(
+                    value="Provide baz value",
+                    resumable=True,
+                    ns=[AnyStr("node_2"), AnyStr("subgraph_node_1:")],
+                )
+            ],
+        }
         assert (await graph.aget_state(config, subgraphs=True)).tasks[
             0
         ].state.values == {"bar": "hi! foo"}
@@ -4267,7 +4345,7 @@ async def test_store_injected_async(checkpointer_name: str, store_name: str) -> 
         assert result == {"count": N + 1}
         returned_doc = (await the_store.aget(namespace, doc_id)).value
         assert returned_doc == {**doc, "from_thread": thread_1, "some_val": 0}
-        assert len((await the_store.asearch(namespace))) == 1
+        assert len(await the_store.asearch(namespace)) == 1
 
         # Check results after another turn of the same thread
         result = await graph.ainvoke(
@@ -4276,7 +4354,7 @@ async def test_store_injected_async(checkpointer_name: str, store_name: str) -> 
         assert result == {"count": (N + 1) * 2}
         returned_doc = (await the_store.aget(namespace, doc_id)).value
         assert returned_doc == {**doc, "from_thread": thread_1, "some_val": N + 1}
-        assert len((await the_store.asearch(namespace))) == 1
+        assert len(await the_store.asearch(namespace)) == 1
 
         # Test with a different thread
         result = await graph.ainvoke(
@@ -4290,7 +4368,7 @@ async def test_store_injected_async(checkpointer_name: str, store_name: str) -> 
             "some_val": 0,
         }  # Overwrites the whole doc
         assert (
-            len((await the_store.asearch(namespace))) == 1
+            len(await the_store.asearch(namespace)) == 1
         )  # still overwriting the same one
 
 
@@ -4375,6 +4453,7 @@ async def test_parent_command(checkpointer_name: str) -> None:
                 }
             ),
             tasks=(),
+            interrupts=(),
         )
 
 
@@ -4613,7 +4692,15 @@ async def test_interrupt_task_functional(checkpointer_name: str) -> None:
 
         config = {"configurable": {"thread_id": "1"}}
         # First run, interrupted at bar
-        await graph.ainvoke({"a": ""}, config)
+        assert await graph.ainvoke({"a": ""}, config) == {
+            "__interrupt__": [
+                Interrupt(
+                    value="Provide value for bar:",
+                    resumable=True,
+                    ns=[AnyStr("graph:"), AnyStr("bar:")],
+                ),
+            ]
+        }
         # Resume with an answer
         res = await graph.ainvoke(Command(resume="bar"), config)
         assert res == {"a": "foobar"}
@@ -5502,10 +5589,24 @@ async def test_interrupt_subgraph_reenter_checkpointer_true(
         assert await parent.ainvoke({"foo": "", "counter": 0}, config) == {
             "foo": "",
             "counter": 0,
+            "__interrupt__": [
+                Interrupt(
+                    value="Provide value",
+                    resumable=True,
+                    ns=[AnyStr("call_subgraph"), AnyStr("subnode_2:")],
+                )
+            ],
         }
         assert await parent.ainvoke(Command(resume="bar"), config) == {
             "foo": "subgraph_2",
             "counter": 1,
+            "__interrupt__": [
+                Interrupt(
+                    value="Provide value",
+                    resumable=True,
+                    ns=[AnyStr("call_subgraph"), AnyStr("subnode_2")],
+                )
+            ],
         }
         assert await parent.ainvoke(Command(resume="qux"), config) == {
             "foo": "subgraph_2|parent",
@@ -5530,6 +5631,13 @@ async def test_interrupt_subgraph_reenter_checkpointer_true(
         assert await parent.ainvoke({"foo": "meow", "counter": 0}, config) == {
             "foo": "meow",
             "counter": 0,
+            "__interrupt__": [
+                Interrupt(
+                    value="Provide value",
+                    resumable=True,
+                    ns=[AnyStr("call_subgraph"), AnyStr("subnode_2:")],
+                )
+            ],
         }
         # confirm that we preserve the state values from the previous invocation
         assert bar_values == [None, "barbaz", "quxbaz"]

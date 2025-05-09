@@ -1,11 +1,11 @@
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
+from typing import Optional
 from uuid import UUID, uuid4
 
 import aiomysql  # type: ignore
 import asyncmy
 import pymysql
-import pymysql.constants.ER
 import pytest
 from langchain_core import __version__ as core_version
 from packaging import version
