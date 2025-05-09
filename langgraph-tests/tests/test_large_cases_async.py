@@ -4792,7 +4792,6 @@ async def test_nested_graph_state(checkpointer_name: str) -> None:
                             },
                             "step": 1,
                             "thread_id": "1",
-                            "checkpoint_ns": AnyStr("inner:"),
                             "langgraph_node": "inner",
                             "langgraph_path": [PULL, "inner"],
                             "langgraph_step": 2,
@@ -4989,7 +4988,6 @@ async def test_nested_graph_state(checkpointer_name: str) -> None:
                     "step": 1,
                     "parents": {"": AnyStr()},
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("inner:"),
                     "langgraph_node": "inner",
                     "langgraph_path": [PULL, "inner"],
                     "langgraph_step": 2,
@@ -5032,7 +5030,6 @@ async def test_nested_graph_state(checkpointer_name: str) -> None:
                     "step": 0,
                     "parents": {"": AnyStr()},
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("inner:"),
                     "langgraph_node": "inner",
                     "langgraph_path": [PULL, "inner"],
                     "langgraph_step": 2,
@@ -5081,7 +5078,6 @@ async def test_nested_graph_state(checkpointer_name: str) -> None:
                     "step": -1,
                     "parents": {"": AnyStr()},
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("inner:"),
                     "langgraph_node": "inner",
                     "langgraph_path": [PULL, "inner"],
                     "langgraph_step": 2,
@@ -5436,51 +5432,65 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
             ),
         )
         child_state = await app.aget_state(outer_state.tasks[0].state)
-        assert (
-            child_state.tasks[0]
-            == StateSnapshot(
-                values={"my_key": "hi my value"},
-                tasks=(
-                    PregelTask(
-                        AnyStr(),
-                        "child_1",
-                        (PULL, "child_1"),
-                        state={
-                            "configurable": {
-                                "thread_id": "1",
-                                "checkpoint_ns": AnyStr(),
-                            }
-                        },
-                    ),
+        assert child_state == StateSnapshot(
+            values={"my_key": "hi my value"},
+            tasks=(
+                PregelTask(
+                    AnyStr(),
+                    "child_1",
+                    (PULL, "child_1"),
+                    state={
+                        "configurable": {
+                            "thread_id": "1",
+                            "checkpoint_ns": AnyStr(),
+                        }
+                    },
                 ),
-                next=("child_1",),
-                config={
+            ),
+            next=("child_1",),
+            config={
+                "configurable": {
+                    "thread_id": "1",
+                    "checkpoint_ns": AnyStr("child:"),
+                    "checkpoint_id": AnyStr(),
+                    "checkpoint_map": AnyDict(
+                        {
+                            "": AnyStr(),
+                            AnyStr("child:"): AnyStr(),
+                        }
+                    ),
+                }
+            },
+            metadata={
+                "langgraph_checkpoint_ns": AnyStr("child:"),
+                "langgraph_node": "child",
+                "langgraph_path": ["__pregel_pull", "child"],
+                "langgraph_step": 2,
+                "langgraph_triggers": ["branch:to:child"],
+                "parents": {"": AnyStr()},
+                "source": "loop",
+                "writes": None,
+                "step": 0,
+                "thread_id": "1",
+            },
+            created_at=AnyStr(),
+            parent_config=(
+                None
+                if "shallow" in checkpointer_name
+                else {
                     "configurable": {
                         "thread_id": "1",
                         "checkpoint_ns": AnyStr("child:"),
                         "checkpoint_id": AnyStr(),
+                        "checkpoint_map": AnyDict(
+                            {
+                                "": AnyStr(),
+                                AnyStr("child:"): AnyStr(),
+                            }
+                        ),
                     }
-                },
-                metadata={
-                    "parents": {"": AnyStr()},
-                    "source": "loop",
-                    "writes": None,
-                    "step": 0,
-                    "thread_id": "1",
-                },
-                created_at=AnyStr(),
-                parent_config=(
-                    None
-                    if "shallow" in checkpointer_name
-                    else {
-                        "configurable": {
-                            "thread_id": "1",
-                            "checkpoint_ns": AnyStr("child:"),
-                            "checkpoint_id": AnyStr(),
-                        }
-                    }
-                ),
-            ).tasks[0]
+                }
+            ),
         )
         grandchild_state = await app.aget_state(child_state.tasks[0].state)
         assert grandchild_state == StateSnapshot(
@@ -5518,7 +5528,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                 "writes": {"grandchild_1": {"my_key": "hi my value here"}},
                 "step": 1,
                 "thread_id": "1",
-                "checkpoint_ns": AnyStr("child:"),
                 "langgraph_checkpoint_ns": AnyStr("child:"),
                 "langgraph_node": "child_1",
                 "langgraph_path": [PULL, AnyStr("child_1")],
@@ -5603,7 +5612,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                                         },
                                         "step": 1,
                                         "thread_id": "1",
-                                        "checkpoint_ns": AnyStr("child:"),
                                         "langgraph_checkpoint_ns": AnyStr("child:"),
                                         "langgraph_node": "child_1",
                                         "langgraph_path": [
@@ -5658,7 +5666,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                             "writes": None,
                             "step": 0,
                             "thread_id": "1",
-                            "checkpoint_ns": AnyStr("child:"),
                             "langgraph_node": "child",
                             "langgraph_path": [PULL, AnyStr("child")],
                             "langgraph_step": 2,
@@ -5958,7 +5965,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                     "step": 1,
                     "parents": {"": AnyStr()},
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("child:"),
                     "langgraph_node": "child",
                     "langgraph_path": [PULL, AnyStr("child")],
                     "langgraph_step": 2,
@@ -5997,7 +6003,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                     "step": 0,
                     "parents": {"": AnyStr()},
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("child:"),
                     "langgraph_node": "child",
                     "langgraph_path": [PULL, AnyStr("child")],
                     "langgraph_step": 2,
@@ -6049,7 +6054,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                     "step": -1,
                     "parents": {"": AnyStr()},
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("child:"),
                     "langgraph_node": "child",
                     "langgraph_path": [PULL, AnyStr("child")],
                     "langgraph_step": 2,
@@ -6103,7 +6107,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                         }
                     ),
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("child:"),
                     "langgraph_checkpoint_ns": AnyStr("child:"),
                     "langgraph_node": "child_1",
                     "langgraph_path": [
@@ -6160,7 +6163,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                         }
                     ),
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("child:"),
                     "langgraph_checkpoint_ns": AnyStr("child:"),
                     "langgraph_node": "child_1",
                     "langgraph_path": [
@@ -6224,7 +6226,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                         }
                     ),
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("child:"),
                     "langgraph_checkpoint_ns": AnyStr("child:"),
                     "langgraph_node": "child_1",
                     "langgraph_path": [
@@ -6288,7 +6289,6 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                         }
                     ),
                     "thread_id": "1",
-                    "checkpoint_ns": AnyStr("child:"),
                     "langgraph_checkpoint_ns": AnyStr("child:"),
                     "langgraph_node": "child_1",
                     "langgraph_path": [
@@ -6704,7 +6704,6 @@ async def test_weather_subgraph(
                             "step": 1,
                             "parents": {"": AnyStr()},
                             "thread_id": "14",
-                            "checkpoint_ns": AnyStr("weather_graph:"),
                             "langgraph_node": "weather_graph",
                             "langgraph_path": [PULL, "weather_graph"],
                             "langgraph_step": 2,
