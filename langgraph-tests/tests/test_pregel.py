@@ -339,7 +339,7 @@ def test_pending_writes_resume(
             }
         },
         checkpoint={
-            "v": 1,
+            "v": 2,
             "id": AnyStr(),
             "ts": AnyStr(),
             "pending_sends": [],
@@ -399,7 +399,7 @@ def test_pending_writes_resume(
             }
         },
         checkpoint={
-            "v": 1,
+            "v": 2,
             "id": AnyStr(),
             "ts": AnyStr(),
             "pending_sends": [],
@@ -452,7 +452,7 @@ def test_pending_writes_resume(
             }
         },
         checkpoint={
-            "v": 1,
+            "v": 2,
             "id": AnyStr(),
             "ts": AnyStr(),
             "pending_sends": [],

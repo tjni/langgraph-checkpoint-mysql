@@ -35,7 +35,7 @@ with PyMySQLSaver.from_conn_string(DB_URI) as checkpointer:
     # call .setup() the first time you're using the checkpointer
     checkpointer.setup()
     checkpoint = {
-        "v": 1,
+        "v": 2,
         "ts": "2024-07-31T20:14:19.804150+00:00",
         "id": "1ef4f797-8335-6428-8001-8a1503f9b875",
         "channel_values": {
@@ -77,7 +77,7 @@ from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
 
 async with AIOMySQLSaver.from_conn_string(DB_URI) as checkpointer:
     checkpoint = {
-        "v": 1,
+        "v": 2,
         "ts": "2024-07-31T20:14:19.804150+00:00",
         "id": "1ef4f797-8335-6428-8001-8a1503f9b875",
         "channel_values": {
