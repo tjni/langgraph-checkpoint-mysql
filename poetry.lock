@@ -536,33 +536,33 @@ typing-extensions = ">=4.7"
 
 [[package]]
 name = "langgraph"
-version = "0.3.24"
+version = "0.3.33"
 description = "Building stateful, multi-actor applications with LLMs"
 optional = false
 python-versions = "<4.0,>=3.9.0"
 groups = ["dev"]
 files = [
-    {file = "langgraph-0.3.24-py3-none-any.whl", hash = "sha256:c8e029ee82502df27d1c8bc0b18001907ccac82eb8ded15e174f660e09d89792"},
-    {file = "langgraph-0.3.24.tar.gz", hash = "sha256:7d286b9f5b374c8527559a86b2fb5a9f9af19e065de4b41e85f74793e5336195"},
+    {file = "langgraph-0.3.33-py3-none-any.whl", hash = "sha256:4c3e7e0a4f15f1a6bf6c82c273ad5672acd365b5a8d7427a764f6470f25081f7"},
+    {file = "langgraph-0.3.33.tar.gz", hash = "sha256:a4365a2a07a7907898f22803fed30ced36c1688456bc39fcfc826cfd85e44d6f"},
 ]
 
 [package.dependencies]
 langchain-core = ">=0.1,<0.4"
 langgraph-checkpoint = ">=2.0.10,<3.0.0"
-langgraph-prebuilt = ">=0.1.1,<0.2"
+langgraph-prebuilt = ">=0.1.8,<0.2"
 langgraph-sdk = ">=0.1.42,<0.2.0"
 xxhash = ">=3.5.0,<4.0.0"
 
 [[package]]
 name = "langgraph-checkpoint"
-version = "2.0.23"
+version = "2.0.25"
 description = "Library with base interfaces for LangGraph checkpoint savers."
 optional = false
 python-versions = "<4.0.0,>=3.9.0"
 groups = ["main", "dev"]
 files = [
-    {file = "langgraph_checkpoint-2.0.23-py3-none-any.whl", hash = "sha256:e54d070124f685eab095bd87e4df35dc5eca11d1e28553d5803c28c5f571b4e0"},
-    {file = "langgraph_checkpoint-2.0.23.tar.gz", hash = "sha256:38bd1fe451b569b773fef6e3daecdeb85f3deac2d94f7551bfd20f1818042c8a"},
+    {file = "langgraph_checkpoint-2.0.25-py3-none-any.whl", hash = "sha256:23416a0f5bc9dd712ac10918fc13e8c9c4530c419d2985a441df71a38fc81602"},
+    {file = "langgraph_checkpoint-2.0.25.tar.gz", hash = "sha256:77a63cab7b5f84dec1d49db561326ec28bdd48bcefb7fe4ac372069d2609287b"},
 ]
 
 [package.dependencies]
@@ -1684,4 +1684,4 @@ pymysql = ["pymysql"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.0,<4.0"
-content-hash = "e6582ddcaab224860742476867c63f324c2e74db737e8ee1f5983f84f7f00317"
+content-hash = "a565052737b3cbf548db8c8a9caeb13926d1ab625b9b187ccf7cbf0013a13505"

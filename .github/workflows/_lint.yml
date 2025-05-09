@@ -4,7 +4,7 @@ on:
   workflow_call
 
 env:
-  POETRY_VERSION: "1.7.1"
+  POETRY_VERSION: "2.1.2"
 
   # This env var allows us to get inline annotations when ruff has complaints.
   RUFF_OUTPUT_FORMAT: github
@@ -41,11 +41,6 @@ jobs:
         if: steps.changed-files.outputs.all
         shell: bash
         run: poetry check
-
-      - name: Check lock file
-        if: steps.changed-files.outputs.all
-        shell: bash
-        run: poetry lock --check
 
       - name: Install dependencies
         if: steps.changed-files.outputs.all

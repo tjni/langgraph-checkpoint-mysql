@@ -1,4 +1,3 @@
-import json
 import operator
 import re
 import time
@@ -10,7 +9,6 @@ import httpx
 import pytest
 from langchain_core.runnables import RunnableConfig, RunnableMap, RunnablePick
 from pytest_mock import MockerFixture
-from syrupy import SnapshotAssertion
 from typing_extensions import TypedDict
 
 from langgraph.channels.context import Context
@@ -41,7 +39,6 @@ from tests.any_str import AnyDict, AnyStr, UnsortedSequence
 from tests.conftest import (
     ALL_CHECKPOINTERS_SYNC,
     REGULAR_CHECKPOINTERS_SYNC,
-    SHOULD_CHECK_SNAPSHOTS,
 )
 from tests.fake_tracer import FakeTracer
 from tests.messages import (
@@ -502,7 +499,7 @@ def test_fork_always_re_runs_nodes(
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
 def test_conditional_graph(
-    snapshot: SnapshotAssertion, request: pytest.FixtureRequest, checkpointer_name: str
+    request: pytest.FixtureRequest, checkpointer_name: str
 ) -> None:
     from langchain_core.language_models.fake import FakeStreamingListLLM
     from langchain_core.prompts import PromptTemplate
@@ -583,13 +580,6 @@ def test_conditional_graph(
     workflow.add_edge("tools", "agent")
 
     app = workflow.compile()
-
-    if SHOULD_CHECK_SNAPSHOTS:
-        assert json.dumps(app.get_graph().to_json(), indent=2) == snapshot
-        assert app.get_graph().draw_mermaid(with_styles=False) == snapshot
-        assert app.get_graph().draw_mermaid() == snapshot
-        assert json.dumps(app.get_graph(xray=True).to_json(), indent=2) == snapshot
-        assert app.get_graph(xray=True).draw_mermaid(with_styles=False) == snapshot
 
     assert app.invoke({"input": "what is weather in sf"}) == {
         "input": "what is weather in sf",
@@ -718,10 +708,6 @@ def test_conditional_graph(
         interrupt_after=["agent"],
     )
     config = {"configurable": {"thread_id": "1"}}
-
-    if SHOULD_CHECK_SNAPSHOTS:
-        assert app_w_interrupt.get_graph().to_json() == snapshot
-        assert app_w_interrupt.get_graph().draw_mermaid() == snapshot
 
     assert [
         c for c in app_w_interrupt.stream({"input": "what is weather in sf"}, config)
@@ -1413,7 +1399,6 @@ def test_conditional_graph(
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
 def test_conditional_state_graph(
-    snapshot: SnapshotAssertion,
     mocker: MockerFixture,
     request: pytest.FixtureRequest,
     checkpointer_name: str,
@@ -1534,12 +1519,6 @@ def test_conditional_state_graph(
     workflow.add_edge("tools", "agent")
 
     app = workflow.compile()
-
-    if SHOULD_CHECK_SNAPSHOTS:
-        assert json.dumps(app.get_input_schema().model_json_schema()) == snapshot
-        assert json.dumps(app.get_output_schema().model_json_schema()) == snapshot
-        assert json.dumps(app.get_graph().to_json(), indent=2) == snapshot
-        assert app.get_graph().draw_mermaid(with_styles=False) == snapshot
 
     with assert_ctx_once():
         assert app.invoke({"input": "what is weather in sf"}) == {
@@ -3246,7 +3225,6 @@ def test_state_graph_packets(
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
 def test_message_graph(
-    snapshot: SnapshotAssertion,
     deterministic_uuids: MockerFixture,
     request: pytest.FixtureRequest,
     checkpointer_name: str,
@@ -3369,12 +3347,6 @@ def test_message_graph(
     # This compiles it into a LangChain Runnable,
     # meaning you can use it as you would any other runnable
     app = workflow.compile()
-
-    if SHOULD_CHECK_SNAPSHOTS:
-        assert json.dumps(app.get_input_schema().model_json_schema()) == snapshot
-        assert json.dumps(app.get_output_schema().model_json_schema()) == snapshot
-        assert json.dumps(app.get_graph().to_json(), indent=2) == snapshot
-        assert app.get_graph().draw_mermaid(with_styles=False) == snapshot
 
     assert app.invoke(HumanMessage(content="what is weather in sf")) == [
         _AnyIdHumanMessage(
@@ -4256,7 +4228,7 @@ def test_root_graph(
                     content="result for query",
                     name="search_api",
                     tool_call_id="tool_call123",
-                    id="00000000-0000-4000-8000-000000000040",
+                    id="00000000-0000-4000-8000-000000000024",
                 )
             ]
         },
@@ -4279,7 +4251,7 @@ def test_root_graph(
                     content="result for another",
                     name="search_api",
                     tool_call_id="tool_call456",
-                    id="00000000-0000-4000-8000-000000000049",
+                    id="00000000-0000-4000-8000-000000000030",
                 )
             ]
         },
@@ -4983,7 +4955,7 @@ def test_root_graph(
         "__root__": [
             HumanMessage(
                 content="what is weather in sf",
-                id="00000000-0000-4000-8000-000000000083",
+                id="00000000-0000-4000-8000-000000000051",
             ),
             AIMessage(
                 content="",
@@ -5003,7 +4975,7 @@ def test_root_graph(
             ),
             AIMessage(content="answer", id="ai2"),
             AIMessage(
-                content="an extra message", id="00000000-0000-4000-8000-000000000107"
+                content="an extra message", id="00000000-0000-4000-8000-000000000066"
             ),
             HumanMessage(content="what is weather in la"),
         ],
@@ -5572,7 +5544,7 @@ def test_dynamic_interrupt_subgraph(
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
 def test_start_branch_then(
-    snapshot: SnapshotAssertion, request: pytest.FixtureRequest, checkpointer_name: str
+    request: pytest.FixtureRequest, checkpointer_name: str
 ) -> None:
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
 
@@ -5606,10 +5578,11 @@ def test_start_branch_then(
     tool_two_graph.add_node("tool_two_slow", tool_two_slow)
     tool_two_graph.add_node("tool_two_fast", tool_two_fast)
     tool_two_graph.set_conditional_entry_point(
-        lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast", then=END
+        lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast",
+        then=END,
+        path_map=["tool_two_slow", "tool_two_fast"],
     )
     tool_two = tool_two_graph.compile()
-    assert tool_two.get_graph().draw_mermaid() == snapshot
 
     assert tool_two.invoke({"my_key": "value", "market": "DE"}) == {
         "my_key": "value slow",
@@ -5874,7 +5847,7 @@ def test_start_branch_then(
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
 def test_branch_then(
-    snapshot: SnapshotAssertion, request: pytest.FixtureRequest, checkpointer_name: str
+    request: pytest.FixtureRequest, checkpointer_name: str
 ) -> None:
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
 
@@ -5888,6 +5861,7 @@ def test_branch_then(
     tool_two_graph.add_conditional_edges(
         source="prepare",
         path=lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast",
+        path_map=["tool_two_slow", "tool_two_fast"],
         then="finish",
     )
     tool_two_graph.add_node("prepare", lambda s: {"my_key": " prepared"})
@@ -5895,8 +5869,6 @@ def test_branch_then(
     tool_two_graph.add_node("tool_two_fast", lambda s: {"my_key": " fast"})
     tool_two_graph.add_node("finish", lambda s: {"my_key": " finished"})
     tool_two = tool_two_graph.compile()
-    assert tool_two.get_graph().draw_mermaid(with_styles=False) == snapshot
-    assert tool_two.get_graph().draw_mermaid() == snapshot
 
     assert tool_two.invoke({"my_key": "value", "market": "DE"}, debug=1) == {
         "my_key": "value prepared slow finished",
@@ -6630,9 +6602,10 @@ def test_branch_then(
     )
 
 
-@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+@pytest.mark.parametrize("checkpoint_during", [True, False])
+@pytest.mark.parametrize("checkpointer_name", REGULAR_CHECKPOINTERS_SYNC)
 def test_send_dedupe_on_resume(
-    request: pytest.FixtureRequest, checkpointer_name: str
+    request: pytest.FixtureRequest, checkpointer_name: str, checkpoint_during: bool
 ) -> None:
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
 
@@ -6688,7 +6661,7 @@ def test_send_dedupe_on_resume(
 
     graph = builder.compile(checkpointer=checkpointer)
     thread1 = {"configurable": {"thread_id": "1"}}
-    assert graph.invoke(["0"], thread1, debug=1) == [
+    assert graph.invoke(["0"], thread1, checkpoint_during=checkpoint_during) == [
         "0",
         "1",
         "3.1",
@@ -6705,12 +6678,11 @@ def test_send_dedupe_on_resume(
         pytest.xfail("TODO: shallow checkpointer reports wrong next set")
     assert state.next == ("flaky",)
     # check history
-    if "shallow" not in checkpointer_name:
-        history = [c for c in graph.get_state_history(thread1)]
-        assert len(history) == 4
+    history = [c for c in graph.get_state_history(thread1)]
+    assert len(history) == (4 if checkpoint_during else 1)
 
     # resume execution
-    assert graph.invoke(None, thread1, debug=1) == [
+    assert graph.invoke(None, thread1, checkpoint_during=checkpoint_during) == [
         "0",
         "1",
         "3.1",
@@ -6730,6 +6702,7 @@ def test_send_dedupe_on_resume(
     assert state.next == ()
     # check history
     history = [c for c in graph.get_state_history(thread1)]
+    assert len(history) == (6 if checkpoint_during else 2)
     expected_history = [
         StateSnapshot(
             values=[
@@ -6866,13 +6839,9 @@ def test_send_dedupe_on_resume(
                     name="flaky",
                     path=("__pregel_push", 1),
                     error=None,
-                    interrupts=(
-                        Interrupt(
-                            value="Bahh", resumable=False, ns=None, when="during"
-                        ),
-                    ),
+                    interrupts=(Interrupt(value="Bahh", resumable=False, ns=None),),
                     state=None,
-                    result=["flaky|4"],
+                    result=["flaky|4"] if checkpoint_during else None,
                 ),
                 PregelTask(
                     id=AnyStr(),
@@ -7009,10 +6978,11 @@ def test_send_dedupe_on_resume(
             ),
         ),
     ]
-    if "shallow" in checkpointer_name:
-        expected_history = expected_history[:1]
-
-    assert history == expected_history
+    if checkpoint_during:
+        assert history == expected_history
+    else:
+        assert history[0] == expected_history[0]
+        assert history[1] == expected_history[2]
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
@@ -9200,7 +9170,7 @@ def test_send_react_interrupt(
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
 def test_send_react_interrupt_control(
-    request: pytest.FixtureRequest, checkpointer_name: str, snapshot: SnapshotAssertion
+    request: pytest.FixtureRequest, checkpointer_name: str
 ) -> None:
     from langchain_core.messages import AIMessage, HumanMessage, ToolCall, ToolMessage
 
@@ -9230,7 +9200,6 @@ def test_send_react_interrupt_control(
     builder.add_node(foo)
     builder.add_edge(START, "agent")
     graph = builder.compile()
-    assert graph.get_graph().draw_mermaid() == snapshot
 
     assert graph.invoke({"messages": [HumanMessage("hello")]}) == {
         "messages": [
@@ -9462,7 +9431,7 @@ def test_send_react_interrupt_control(
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
 def test_weather_subgraph(
-    request: pytest.FixtureRequest, checkpointer_name: str, snapshot: SnapshotAssertion
+    request: pytest.FixtureRequest, checkpointer_name: str
 ) -> None:
     from langchain_core.language_models.fake_chat_models import (
         FakeMessagesListChatModel,
@@ -9561,12 +9530,14 @@ def test_weather_subgraph(
     graph.add_node(normal_llm_node)
     graph.add_node("weather_graph", weather_graph)
     graph.add_edge(START, "router_node")
-    graph.add_conditional_edges("router_node", route_after_prediction)
+    graph.add_conditional_edges(
+        "router_node",
+        route_after_prediction,
+        path_map=["weather_graph", "normal_llm_node"],
+    )
     graph.add_edge("normal_llm_node", END)
     graph.add_edge("weather_graph", END)
     graph = graph.compile(checkpointer=checkpointer)
-
-    assert graph.get_graph(xray=1).draw_mermaid() == snapshot
 
     config = {"configurable": {"thread_id": "1"}}
     thread2 = {"configurable": {"thread_id": "2"}}

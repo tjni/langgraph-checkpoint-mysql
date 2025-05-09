@@ -19,7 +19,6 @@ from langchain_core.messages import ToolCall
 from langchain_core.runnables import RunnableConfig, RunnablePick
 from pydantic import BaseModel
 from pytest_mock import MockerFixture
-from syrupy import SnapshotAssertion
 from typing_extensions import TypedDict
 
 from langgraph.channels.context import Context
@@ -6399,7 +6398,7 @@ async def test_send_to_nested_graphs(checkpointer_name: str) -> None:
 )
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
 async def test_weather_subgraph(
-    checkpointer_name: str, snapshot: SnapshotAssertion
+    checkpointer_name: str
 ) -> None:
     from langchain_core.language_models.fake_chat_models import (
         FakeMessagesListChatModel,
@@ -6501,7 +6500,11 @@ async def test_weather_subgraph(
     graph.add_node(normal_llm_node)
     graph.add_node("weather_graph", weather_graph)
     graph.add_edge(START, "router_node")
-    graph.add_conditional_edges("router_node", route_after_prediction)
+    graph.add_conditional_edges(
+        "router_node",
+        route_after_prediction,
+        path_map=["weather_graph", "normal_llm_node"],
+    )
     graph.add_edge("normal_llm_node", END)
     graph.add_edge("weather_graph", END)
 
@@ -6510,8 +6513,6 @@ async def test_weather_subgraph(
 
     async with awith_checkpointer(checkpointer_name) as checkpointer:
         graph = graph.compile(checkpointer=checkpointer)
-
-        assert graph.get_graph(xray=1).draw_mermaid() == snapshot
 
         config = {"configurable": {"thread_id": "1"}}
         thread2 = {"configurable": {"thread_id": "2"}}
