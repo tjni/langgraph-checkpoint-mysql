@@ -990,15 +990,13 @@ async def test_pending_writes_resume(
         assert checkpoint is not None
         # should contain error from "two"
         expected_writes = [
-            (AnyStr(), "one", "one"),
             (AnyStr(), "value", 2),
             (AnyStr(), ERROR, 'ConnectionError("I\'m not good")'),
         ]
-        assert len(checkpoint.pending_writes) == 3
+        assert len(checkpoint.pending_writes) == 2
         assert all(w in expected_writes for w in checkpoint.pending_writes)
         # both non-error pending writes come from same task
         non_error_writes = [w for w in checkpoint.pending_writes if w[1] != ERROR]
-        assert non_error_writes[0][0] == non_error_writes[1][0]
         # error write is from the other task
         error_write = next(w for w in checkpoint.pending_writes if w[1] == ERROR)
         assert error_write[0] != non_error_writes[0][0]
@@ -1045,10 +1043,10 @@ async def test_pending_writes_resume(
                 "pending_sends": [],
                 "versions_seen": {
                     "one": {
-                        "start:one": AnyVersion(),
+                        "branch:to:one": AnyVersion(),
                     },
                     "two": {
-                        "start:two": AnyVersion(),
+                        "branch:to:two": AnyVersion(),
                     },
                     "__input__": {},
                     "__start__": {
@@ -1057,19 +1055,17 @@ async def test_pending_writes_resume(
                     "__interrupt__": {
                         "value": AnyVersion(),
                         "__start__": AnyVersion(),
-                        "start:one": AnyVersion(),
-                        "start:two": AnyVersion(),
+                        "branch:to:one": AnyVersion(),
+                        "branch:to:two": AnyVersion(),
                     },
                 },
                 "channel_versions": {
-                    "one": AnyVersion(),
-                    "two": AnyVersion(),
                     "value": AnyVersion(),
                     "__start__": AnyVersion(),
-                    "start:one": AnyVersion(),
-                    "start:two": AnyVersion(),
+                    "branch:to:one": AnyVersion(),
+                    "branch:to:two": AnyVersion(),
                 },
-                "channel_values": {"one": "one", "two": "two", "value": 6},
+                "channel_values": {"value": 6},
             },
             metadata={
                 "parents": {},
@@ -1114,13 +1110,13 @@ async def test_pending_writes_resume(
                 "channel_versions": {
                     "value": AnyVersion(),
                     "__start__": AnyVersion(),
-                    "start:one": AnyVersion(),
-                    "start:two": AnyVersion(),
+                    "branch:to:one": AnyVersion(),
+                    "branch:to:two": AnyVersion(),
                 },
                 "channel_values": {
                     "value": 1,
-                    "start:one": "__start__",
-                    "start:two": "__start__",
+                    "branch:to:one": None,
+                    "branch:to:two": None,
                 },
             },
             metadata={
@@ -1140,10 +1136,8 @@ async def test_pending_writes_resume(
                 }
             },
             pending_writes=UnsortedSequence(
-                (AnyStr(), "one", "one"),
                 (AnyStr(), "value", 2),
                 (AnyStr(), "__error__", 'ConnectionError("I\'m not good")'),
-                (AnyStr(), "two", "two"),
                 (AnyStr(), "value", 3),
             ),
         )
@@ -1176,8 +1170,8 @@ async def test_pending_writes_resume(
             parent_config=None,
             pending_writes=UnsortedSequence(
                 (AnyStr(), "value", 1),
-                (AnyStr(), "start:one", "__start__"),
-                (AnyStr(), "start:two", "__start__"),
+                (AnyStr(), "branch:to:one", None),
+                (AnyStr(), "branch:to:two", None),
             ),
         )
 
@@ -4715,6 +4709,8 @@ async def test_double_interrupt_subgraph(checkpointer_name: str) -> None:
 
         def invoke_sub_agent(state: AgentState):
             return subgraph.invoke(state)
+
+        thread = {"configurable": {"thread_id": str(uuid.uuid4())}}
 
         parent_agent = (
             StateGraph(AgentState)

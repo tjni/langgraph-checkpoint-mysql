@@ -35,7 +35,7 @@ pymysql = "^1.1.1"
 aiomysql = "^0.2.0"
 asyncmy = "^0.2.10"
 types-PyMySQL = "^1.1.0"
-langgraph = "0.3.18"
+langgraph = "0.3.23"
 syrupy = "^4.0.2"
 pytest-repeat = "^0.9.3"
 pytest-xdist = { extras = ["psutil"], version = "^3.6.1" }

@@ -146,7 +146,6 @@ def test_no_prompt(
                 _AnyIdHumanMessage(content="hi?"),
                 AIMessage(content="hi?", id="0"),
             ],
-            "agent": "agent",
         }
         assert saved.metadata == {
             "parents": {},
@@ -178,7 +177,6 @@ async def test_no_prompt_async(checkpointer_name: str) -> None:
                     _AnyIdHumanMessage(content="hi?"),
                     AIMessage(content="hi?", id="0"),
                 ],
-                "agent": "agent",
             }
             assert saved.metadata == {
                 "parents": {},
