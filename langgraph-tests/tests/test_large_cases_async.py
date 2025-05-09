@@ -3925,7 +3925,10 @@ async def test_branch_then(checkpointer_name: str) -> None:
                     "id": AnyStr(),
                     "name": "prepare",
                     "input": {"my_key": "value", "market": "DE"},
-                    "triggers": ["start:prepare"],
+                    "triggers": (
+                        "branch:to:prepare",
+                        "start:prepare",
+                    ),
                 },
             },
             {
@@ -3997,7 +4000,7 @@ async def test_branch_then(checkpointer_name: str) -> None:
                     "id": AnyStr(),
                     "name": "tool_two_slow",
                     "input": {"my_key": "value prepared", "market": "DE"},
-                    "triggers": ["branch:prepare:condition:tool_two_slow"],
+                    "triggers": ("branch:to:tool_two_slow",),
                 },
             },
             {
@@ -4069,7 +4072,10 @@ async def test_branch_then(checkpointer_name: str) -> None:
                     "id": AnyStr(),
                     "name": "finish",
                     "input": {"my_key": "value prepared slow", "market": "DE"},
-                    "triggers": ["branch:prepare:condition::then"],
+                    "triggers": (
+                        "branch:prepare:condition::then",
+                        "branch:to:finish",
+                    ),
                 },
             },
             {
@@ -4238,7 +4244,10 @@ async def test_branch_then(checkpointer_name: str) -> None:
                     "id": AnyStr(),
                     "name": "prepare",
                     "input": {"my_key": "value", "market": "DE"},
-                    "triggers": ["start:prepare"],
+                    "triggers": (
+                        "branch:to:prepare",
+                        "start:prepare",
+                    ),
                 },
             },
             {
@@ -4793,7 +4802,7 @@ async def test_nested_graph_state(checkpointer_name: str) -> None:
                             "langgraph_node": "inner",
                             "langgraph_path": [PULL, "inner"],
                             "langgraph_step": 2,
-                            "langgraph_triggers": ["outer_1"],
+                            "langgraph_triggers": ["branch:to:inner", "outer_1"],
                             "langgraph_checkpoint_ns": AnyStr("inner:"),
                         },
                         created_at=AnyStr(),
@@ -4990,7 +4999,7 @@ async def test_nested_graph_state(checkpointer_name: str) -> None:
                     "langgraph_node": "inner",
                     "langgraph_path": [PULL, "inner"],
                     "langgraph_step": 2,
-                    "langgraph_triggers": ["outer_1"],
+                    "langgraph_triggers": ["branch:to:inner", "outer_1"],
                     "langgraph_checkpoint_ns": AnyStr("inner:"),
                 },
                 created_at=AnyStr(),
@@ -5033,7 +5042,7 @@ async def test_nested_graph_state(checkpointer_name: str) -> None:
                     "langgraph_node": "inner",
                     "langgraph_path": [PULL, "inner"],
                     "langgraph_step": 2,
-                    "langgraph_triggers": ["outer_1"],
+                    "langgraph_triggers": ["branch:to:inner", "outer_1"],
                     "langgraph_checkpoint_ns": AnyStr("inner:"),
                 },
                 created_at=AnyStr(),
@@ -5082,7 +5091,7 @@ async def test_nested_graph_state(checkpointer_name: str) -> None:
                     "langgraph_node": "inner",
                     "langgraph_path": [PULL, "inner"],
                     "langgraph_step": 2,
-                    "langgraph_triggers": ["outer_1"],
+                    "langgraph_triggers": ["branch:to:inner", "outer_1"],
                     "langgraph_checkpoint_ns": AnyStr("inner:"),
                 },
                 created_at=AnyStr(),
@@ -5520,7 +5529,7 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                 "langgraph_node": "child_1",
                 "langgraph_path": [PULL, AnyStr("child_1")],
                 "langgraph_step": 1,
-                "langgraph_triggers": [AnyStr("start:child_1")],
+                "langgraph_triggers": ["branch:to:child_1", "start:child_1"],
             },
             created_at=AnyStr(),
             parent_config=(
@@ -5606,7 +5615,10 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                                             AnyStr("child_1"),
                                         ],
                                         "langgraph_step": 1,
-                                        "langgraph_triggers": [AnyStr("start:child_1")],
+                                        "langgraph_triggers": [
+                                            "branch:to:child_1",
+                                            "start:child_1",
+                                        ],
                                     },
                                     created_at=AnyStr(),
                                     parent_config=(
@@ -5655,7 +5667,10 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                             "langgraph_node": "child",
                             "langgraph_path": [PULL, AnyStr("child")],
                             "langgraph_step": 2,
-                            "langgraph_triggers": [AnyStr("parent_1")],
+                            "langgraph_triggers": [
+                                "branch:to:child",
+                                AnyStr("parent_1"),
+                            ],
                             "langgraph_checkpoint_ns": AnyStr("child:"),
                         },
                         created_at=AnyStr(),
@@ -5953,7 +5968,7 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                     "langgraph_node": "child",
                     "langgraph_path": [PULL, AnyStr("child")],
                     "langgraph_step": 2,
-                    "langgraph_triggers": [AnyStr("parent_1")],
+                    "langgraph_triggers": ["branch:to:child", AnyStr("parent_1")],
                     "langgraph_checkpoint_ns": AnyStr("child:"),
                 },
                 created_at=AnyStr(),
@@ -5992,7 +6007,7 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                     "langgraph_node": "child",
                     "langgraph_path": [PULL, AnyStr("child")],
                     "langgraph_step": 2,
-                    "langgraph_triggers": [AnyStr("parent_1")],
+                    "langgraph_triggers": ["branch:to:child", AnyStr("parent_1")],
                     "langgraph_checkpoint_ns": AnyStr("child:"),
                 },
                 created_at=AnyStr(),
@@ -6044,7 +6059,7 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                     "langgraph_node": "child",
                     "langgraph_path": [PULL, AnyStr("child")],
                     "langgraph_step": 2,
-                    "langgraph_triggers": [AnyStr("parent_1")],
+                    "langgraph_triggers": ["branch:to:child", AnyStr("parent_1")],
                     "langgraph_checkpoint_ns": AnyStr("child:"),
                 },
                 created_at=AnyStr(),
@@ -6102,7 +6117,10 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                         AnyStr("child_1"),
                     ],
                     "langgraph_step": 1,
-                    "langgraph_triggers": [AnyStr("start:child_1")],
+                    "langgraph_triggers": [
+                        "branch:to:child_1",
+                        AnyStr("start:child_1"),
+                    ],
                 },
                 created_at=AnyStr(),
                 parent_config={
@@ -6157,7 +6175,10 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                         AnyStr("child_1"),
                     ],
                     "langgraph_step": 1,
-                    "langgraph_triggers": [AnyStr("start:child_1")],
+                    "langgraph_triggers": [
+                        "branch:to:child_1",
+                        AnyStr("start:child_1"),
+                    ],
                 },
                 created_at=AnyStr(),
                 parent_config={
@@ -6219,7 +6240,10 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                         AnyStr("child_1"),
                     ],
                     "langgraph_step": 1,
-                    "langgraph_triggers": [AnyStr("start:child_1")],
+                    "langgraph_triggers": [
+                        "branch:to:child_1",
+                        AnyStr("start:child_1"),
+                    ],
                 },
                 created_at=AnyStr(),
                 parent_config={
@@ -6281,7 +6305,10 @@ async def test_doubly_nested_graph_state(checkpointer_name: str) -> None:
                         AnyStr("child_1"),
                     ],
                     "langgraph_step": 1,
-                    "langgraph_triggers": [AnyStr("start:child_1")],
+                    "langgraph_triggers": [
+                        "branch:to:child_1",
+                        AnyStr("start:child_1"),
+                    ],
                 },
                 created_at=AnyStr(),
                 parent_config=None,
@@ -6691,9 +6718,7 @@ async def test_weather_subgraph(
                             "langgraph_node": "weather_graph",
                             "langgraph_path": [PULL, "weather_graph"],
                             "langgraph_step": 2,
-                            "langgraph_triggers": [
-                                "branch:router_node:route_after_prediction:weather_graph"
-                            ],
+                            "langgraph_triggers": ["branch:to:weather_graph"],
                             "langgraph_checkpoint_ns": AnyStr("weather_graph:"),
                         },
                         created_at=AnyStr(),
@@ -6807,9 +6832,7 @@ async def test_weather_subgraph(
                             "langgraph_node": "weather_graph",
                             "langgraph_path": [PULL, "weather_graph"],
                             "langgraph_step": 2,
-                            "langgraph_triggers": [
-                                "branch:router_node:route_after_prediction:weather_graph"
-                            ],
+                            "langgraph_triggers": ["branch:to:weather_graph"],
                             "langgraph_checkpoint_ns": AnyStr("weather_graph:"),
                         },
                         created_at=AnyStr(),

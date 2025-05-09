@@ -512,14 +512,14 @@ files = [
 
 [[package]]
 name = "langchain-core"
-version = "0.3.44"
+version = "0.3.46"
 description = "Building applications with LLMs through composability"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main", "dev"]
 files = [
-    {file = "langchain_core-0.3.44-py3-none-any.whl", hash = "sha256:d989ce8bd62f1d07765acd575e6ec1254aec0cf7775aaea39fe4af8102377459"},
-    {file = "langchain_core-0.3.44.tar.gz", hash = "sha256:7c0a01e78360f007cbca448178fe7e032404068e6431dbe8ce905f84febbdfa5"},
+    {file = "langchain_core-0.3.46-py3-none-any.whl", hash = "sha256:28b5689fc347975ea520b5364ab4aee5567e661553bbee5e97cabf4596c28ce0"},
+    {file = "langchain_core-0.3.46.tar.gz", hash = "sha256:5fca010eeb0a427be5aa8a8525e2112995dde790c584cef165be7c5e0ee1c2b5"},
 ]
 
 [package.dependencies]
@@ -536,14 +536,14 @@ typing-extensions = ">=4.7"
 
 [[package]]
 name = "langgraph"
-version = "0.3.10"
+version = "0.3.18"
 description = "Building stateful, multi-actor applications with LLMs"
 optional = false
 python-versions = "<4.0,>=3.9.0"
 groups = ["dev"]
 files = [
-    {file = "langgraph-0.3.10-py3-none-any.whl", hash = "sha256:60cd9bbc16843cc6a9de33012d0a12e93ce1a69b90b568ea49971b92a293be7f"},
-    {file = "langgraph-0.3.10.tar.gz", hash = "sha256:0b6275b00037b6261e7c94469eb4555b22b224babe0ad56d3770b5878fc4afd0"},
+    {file = "langgraph-0.3.18-py3-none-any.whl", hash = "sha256:6f6baee7f0914329113fdb33fc5c7f24ef8b657eb664edee58ab1250bd38fa08"},
+    {file = "langgraph-0.3.18.tar.gz", hash = "sha256:432fb4fcda95b27921b7069b4425eca525d6e03418fdc1082a34265c136d272d"},
 ]
 
 [package.dependencies]
@@ -554,14 +554,14 @@ langgraph-sdk = ">=0.1.42,<0.2.0"
 
 [[package]]
 name = "langgraph-checkpoint"
-version = "2.0.18"
+version = "2.0.21"
 description = "Library with base interfaces for LangGraph checkpoint savers."
 optional = false
 python-versions = "<4.0.0,>=3.9.0"
 groups = ["main", "dev"]
 files = [
-    {file = "langgraph_checkpoint-2.0.18-py3-none-any.whl", hash = "sha256:941de442e5a893a6cabb8c3845f03159301b85f63ff4e8f2b308f7dfd96a3f59"},
-    {file = "langgraph_checkpoint-2.0.18.tar.gz", hash = "sha256:2822eedd028b454b7bfebfb7e04347aed1b64db97dedb7eb68ef0fb42641606d"},
+    {file = "langgraph_checkpoint-2.0.21-py3-none-any.whl", hash = "sha256:ca89c2090cd9729f83f9782226935dc5ff9fe7756c24936f484ccb0ce367f87b"},
+    {file = "langgraph_checkpoint-2.0.21.tar.gz", hash = "sha256:52beeb6dc1bd8c487b8315466cab271093b65eb97f54a0942dfe105cd20b237f"},
 ]
 
 [package.dependencies]
@@ -1573,4 +1573,4 @@ pymysql = ["pymysql"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.0,<4.0"
-content-hash = "7227c24a891b08ae8b0125e8bda8dbfc631108b94d0761ef894ef96df7033bad"
+content-hash = "007eb1669a925b6dec5ff5ca118dfba7cf1af9e2a9389622e22bcdcc2e2f91ea"
