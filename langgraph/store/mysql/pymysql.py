@@ -37,7 +37,7 @@ class PyMySQLStore(BaseSyncMySQLStore[pymysql.Connection, DictCursor]):
         """Create a new PyMySQLStore instance from a connection string.
 
         Args:
-            conn_string (str): The MySQL connection info string.
+            conn_string: The MySQL connection info string.
 
         Returns:
             PyMySQLStore: A new PyMySQLStore instance.

@@ -307,7 +307,7 @@ class BaseSyncMySQLStore(
         """Create a database cursor as a context manager.
 
         Args:
-            pipeline (bool): whether to use transaction context manager and handle concurrency
+            pipeline: whether to use transaction context manager and handle concurrency
         """
         with _internal.get_connection(self.conn) as conn:
             if pipeline:
