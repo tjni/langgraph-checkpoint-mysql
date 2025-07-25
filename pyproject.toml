@@ -9,12 +9,12 @@ repository = "https://www.github.com/tjni/langgraph-checkpoint-mysql"
 packages = [{ include = "langgraph" }]
 
 [tool.poetry.dependencies]
-python = "^3.9.0,<4.0"
+python = ">=3.9"
 langgraph-checkpoint = "^2.0.21"
 orjson = ">=3.10.1"
 pymysql = { version = "^1.1.1", optional = true }
 aiomysql = { version = "^0.2.0", optional = true }
-asyncmy = { version = "^0.2.10", optional = true }
+asyncmy = { version = "^0.2.10", python = "<4.0", optional = true }
 typing-extensions = "^4.12.2"
 
 [tool.poetry.extras]
@@ -29,14 +29,14 @@ pytest = "^7.2.1"
 anyio = "^4.4.0"
 pytest-asyncio = "^0.21.1"
 pytest-mock = "^3.11.1"
-pytest-watcher = "^0.4.3"
+pytest-watcher = { version = ">=0.4.3", python = "<4.0" }
 mypy = "^1.10.0"
 pymysql = "^1.1.1"
 aiomysql = "^0.2.0"
-asyncmy = "^0.2.10"
+asyncmy = { version = "^0.2.10", python = "<4.0" }
 types-PyMySQL = "^1.1.0"
 langgraph = "0.4.0"
-langgraph-checkpoint = "2.0.25"
+langgraph-checkpoint = "2.0.26"
 syrupy = "^4.0.2"
 pytest-repeat = "^0.9.3"
 pytest-xdist = { extras = ["psutil"], version = "^3.6.1" }

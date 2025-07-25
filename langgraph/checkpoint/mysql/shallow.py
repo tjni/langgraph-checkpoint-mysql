@@ -37,10 +37,12 @@ MIGRATIONS = [
     f"""CREATE TABLE IF NOT EXISTS checkpoints (
     thread_id VARCHAR(150) NOT NULL,
     checkpoint_ns VARCHAR(2000) NOT NULL DEFAULT '',
-    {mysql_mariadb_branch(
-        "checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
-        "checkpoint_ns_hash BINARY(16),",
-    )}
+    {
+        mysql_mariadb_branch(
+            "checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
+            "checkpoint_ns_hash BINARY(16),",
+        )
+    }
     type VARCHAR(150),
     checkpoint JSON NOT NULL,
     metadata JSON NOT NULL DEFAULT ('{{}}'),
@@ -49,10 +51,12 @@ MIGRATIONS = [
     f"""CREATE TABLE IF NOT EXISTS checkpoint_blobs (
     thread_id VARCHAR(150) NOT NULL,
     checkpoint_ns VARCHAR(2000) NOT NULL DEFAULT '',
-    {mysql_mariadb_branch(
-        "checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
-        "checkpoint_ns_hash BINARY(16),",
-    )}
+    {
+        mysql_mariadb_branch(
+            "checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
+            "checkpoint_ns_hash BINARY(16),",
+        )
+    }
     channel VARCHAR(150) NOT NULL,
     type VARCHAR(150) NOT NULL,
     `blob` LONGBLOB,
@@ -61,10 +65,12 @@ MIGRATIONS = [
     f"""CREATE TABLE IF NOT EXISTS checkpoint_writes (
     thread_id VARCHAR(150) NOT NULL,
     checkpoint_ns VARCHAR(2000) NOT NULL DEFAULT '',
-    {mysql_mariadb_branch(
-        "checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
-        "checkpoint_ns_hash BINARY(16),",
-    )}
+    {
+        mysql_mariadb_branch(
+            "checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
+            "checkpoint_ns_hash BINARY(16),",
+        )
+    }
     checkpoint_id VARCHAR(150) NOT NULL,
     task_id VARCHAR(150) NOT NULL,
     idx INTEGER NOT NULL,
@@ -328,7 +334,7 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
         provided config (matching the thread ID in the config).
 
         Args:
-            config (RunnableConfig): The config to use for retrieving the checkpoint.
+            config: The config to use for retrieving the checkpoint.
 
         Returns:
             Optional[CheckpointTuple]: The retrieved checkpoint tuple, or None if no matching checkpoint was found.
@@ -400,10 +406,10 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
         checkpoint and overwrites a previous checkpoint, if it exists.
 
         Args:
-            config (RunnableConfig): The config to associate with the checkpoint.
-            checkpoint (Checkpoint): The checkpoint to save.
-            metadata (CheckpointMetadata): Additional metadata to save with the checkpoint.
-            new_versions (ChannelVersions): New channel versions as of this write.
+            config: The config to associate with the checkpoint.
+            checkpoint: The checkpoint to save.
+            metadata: Additional metadata to save with the checkpoint.
+            new_versions: New channel versions as of this write.
 
         Returns:
             RunnableConfig: Updated configuration after storing the checkpoint.
@@ -476,9 +482,9 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
         This method saves intermediate writes associated with a checkpoint to the MySQL database.
 
         Args:
-            config (RunnableConfig): Configuration of the related checkpoint.
-            writes (List[Tuple[str, Any]]): List of writes to store.
-            task_id (str): Identifier for the task creating the writes.
+            config: Configuration of the related checkpoint.
+            writes: List of writes to store.
+            task_id: Identifier for the task creating the writes.
         """
         query = (
             self.UPSERT_CHECKPOINT_WRITES_SQL
@@ -534,7 +540,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         """Create a database cursor as a context manager.
 
         Args:
-            pipeline (bool): whether to use transaction context manager and handle concurrency
+            pipeline: whether to use transaction context manager and handle concurrency
         """
         async with _ainternal.get_connection(self.conn) as conn:
             if pipeline:
@@ -624,7 +630,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         This method retrieves a checkpoint tuple from the MySQL database based on the
         provided config (matching the thread ID in the config).
         Args:
-            config (RunnableConfig): The config to use for retrieving the checkpoint.
+            config: The config to use for retrieving the checkpoint.
         Returns:
             Optional[CheckpointTuple]: The retrieved checkpoint tuple, or None if no matching checkpoint was found.
         """
@@ -674,10 +680,10 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         with the provided config. For shallow savers, this method saves ONLY the most recent
         checkpoint and overwrites a previous checkpoint, if it exists.
         Args:
-            config (RunnableConfig): The config to associate with the checkpoint.
-            checkpoint (Checkpoint): The checkpoint to save.
-            metadata (CheckpointMetadata): Additional metadata to save with the checkpoint.
-            new_versions (ChannelVersions): New channel versions as of this write.
+            config: The config to associate with the checkpoint.
+            checkpoint: The checkpoint to save.
+            metadata: Additional metadata to save with the checkpoint.
+            new_versions: New channel versions as of this write.
         Returns:
             RunnableConfig: Updated configuration after storing the checkpoint.
         """
@@ -737,9 +743,9 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         """Store intermediate writes linked to a checkpoint asynchronously.
         This method saves intermediate writes associated with a checkpoint to the database.
         Args:
-            config (RunnableConfig): Configuration of the related checkpoint.
-            writes (Sequence[Tuple[str, Any]]): List of writes to store, each as (channel, value) pair.
-            task_id (str): Identifier for the task creating the writes.
+            config: Configuration of the related checkpoint.
+            writes: List of writes to store, each as (channel, value) pair.
+            task_id: Identifier for the task creating the writes.
         """
         query = (
             self.UPSERT_CHECKPOINT_WRITES_SQL
@@ -798,7 +804,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         This method retrieves a checkpoint tuple from the MySQL database based on the
         provided config (matching the thread ID in the config).
         Args:
-            config (RunnableConfig): The config to use for retrieving the checkpoint.
+            config: The config to use for retrieving the checkpoint.
         Returns:
             Optional[CheckpointTuple]: The retrieved checkpoint tuple, or None if no matching checkpoint was found.
         """
@@ -830,10 +836,10 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         with the provided config. For shallow savers, this method saves ONLY the most recent
         checkpoint and overwrites a previous checkpoint, if it exists.
         Args:
-            config (RunnableConfig): The config to associate with the checkpoint.
-            checkpoint (Checkpoint): The checkpoint to save.
-            metadata (CheckpointMetadata): Additional metadata to save with the checkpoint.
-            new_versions (ChannelVersions): New channel versions as of this write.
+            config: The config to associate with the checkpoint.
+            checkpoint: The checkpoint to save.
+            metadata: Additional metadata to save with the checkpoint.
+            new_versions: New channel versions as of this write.
         Returns:
             RunnableConfig: Updated configuration after storing the checkpoint.
         """
@@ -851,10 +857,10 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         """Store intermediate writes linked to a checkpoint.
         This method saves intermediate writes associated with a checkpoint to the database.
         Args:
-            config (RunnableConfig): Configuration of the related checkpoint.
-            writes (Sequence[Tuple[str, Any]]): List of writes to store, each as (channel, value) pair.
-            task_id (str): Identifier for the task creating the writes.
-            task_path (str): Path of the task creating the writes.
+            config: Configuration of the related checkpoint.
+            writes: List of writes to store, each as (channel, value) pair.
+            task_id: Identifier for the task creating the writes.
+            task_path: Path of the task creating the writes.
         """
         return asyncio.run_coroutine_threadsafe(
             self.aput_writes(config, writes, task_id, task_path), self.loop

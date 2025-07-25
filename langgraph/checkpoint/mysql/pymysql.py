@@ -17,6 +17,8 @@ Conn = BaseConn[pymysql.Connection]  # type: ignore
 
 
 class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
+    """Checkpointer that stores checkpoints in a MySQL database."""
+
     @staticmethod
     def parse_conn_string(conn_string: str) -> dict[str, Any]:
         parsed = urllib.parse.urlparse(conn_string)
@@ -44,7 +46,7 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
         """Create a new PyMySQLSaver instance from a connection string.
 
         Args:
-            conn_string (str): The MySQL connection info string.
+            conn_string: The MySQL connection info string.
 
         Returns:
             PyMySQLSaver: A new PyMySQLSaver instance.
@@ -87,7 +89,7 @@ class ShallowPyMySQLSaver(BaseShallowSyncMySQLSaver):
         """Create a new ShallowPyMySQLSaver instance from a connection string.
 
         Args:
-            conn_string (str): The MySQL connection info string.
+            conn_string: The MySQL connection info string.
 
         Returns:
             ShallowPyMySQLSaver: A new ShallowPyMySQLSaver instance.

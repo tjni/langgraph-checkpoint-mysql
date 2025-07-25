@@ -14,6 +14,8 @@ from langgraph.checkpoint.serde.base import SerializerProtocol
 
 
 class AsyncMySaver(BaseAsyncMySQLSaver[Connection, DictCursor]):
+    """Asynchronous checkpointer that stores checkpoints in a MySQL database."""
+
     @staticmethod
     def parse_conn_string(conn_string: str) -> dict[str, Any]:
         parsed = urllib.parse.urlparse(conn_string)
@@ -43,7 +45,7 @@ class AsyncMySaver(BaseAsyncMySQLSaver[Connection, DictCursor]):
         """Create a new AsyncMySaver instance from a connection string.
 
         Args:
-            conn_string (str): The MySQL connection info string.
+            conn_string: The MySQL connection info string.
 
         Returns:
             AsyncMySaver: A new AsyncMySaver instance.
@@ -88,7 +90,7 @@ class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
         """Create a new ShallowAsyncMySaver instance from a connection string.
 
         Args:
-            conn_string (str): The MySQL connection info string.
+            conn_string: The MySQL connection info string.
 
         Returns:
             ShallowAsyncMySaver: A new ShallowAsyncMySaver instance.

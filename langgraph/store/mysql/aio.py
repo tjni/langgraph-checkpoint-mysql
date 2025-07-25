@@ -40,7 +40,7 @@ class AIOMySQLStore(BaseAsyncMySQLStore[aiomysql.Connection, aiomysql.DictCursor
         """Create a new AIOMySQLStore instance from a connection string.
 
         Args:
-            conn_string (str): The MySQL connection info string.
+            conn_string: The MySQL connection info string.
 
         Returns:
             AIOMySQLStore: A new AIOMySQLStore instance.

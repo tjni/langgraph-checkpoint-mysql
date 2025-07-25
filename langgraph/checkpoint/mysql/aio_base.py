@@ -81,10 +81,10 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         on the provided config. The checkpoints are ordered by checkpoint ID in descending order (newest first).
 
         Args:
-            config (Optional[RunnableConfig]): Base configuration for filtering checkpoints.
-            filter (Optional[Dict[str, Any]]): Additional filtering criteria for metadata.
-            before (Optional[RunnableConfig]): If provided, only checkpoints before the specified checkpoint ID are returned. Defaults to None.
-            limit (Optional[int]): Maximum number of checkpoints to return.
+            config: Base configuration for filtering checkpoints.
+            filter: Additional filtering criteria for metadata.
+            before: If provided, only checkpoints before the specified checkpoint ID are returned. Defaults to None.
+            limit: Maximum number of checkpoints to return.
 
         Yields:
             AsyncIterator[CheckpointTuple]: An asynchronous iterator of matching checkpoint tuples.
@@ -138,7 +138,7 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         for the given thread ID is retrieved.
 
         Args:
-            config (RunnableConfig): The config to use for retrieving the checkpoint.
+            config: The config to use for retrieving the checkpoint.
 
         Returns:
             Optional[CheckpointTuple]: The retrieved checkpoint tuple, or None if no matching checkpoint was found.
@@ -215,10 +215,10 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         with the provided config and its parent config (if any).
 
         Args:
-            config (RunnableConfig): The config to associate with the checkpoint.
-            checkpoint (Checkpoint): The checkpoint to save.
-            metadata (CheckpointMetadata): Additional metadata to save with the checkpoint.
-            new_versions (ChannelVersions): New channel versions as of this write.
+            config: The config to associate with the checkpoint.
+            checkpoint: The checkpoint to save.
+            metadata: Additional metadata to save with the checkpoint.
+            new_versions: New channel versions as of this write.
 
         Returns:
             RunnableConfig: Updated configuration after storing the checkpoint.
@@ -276,9 +276,9 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         This method saves intermediate writes associated with a checkpoint to the database.
 
         Args:
-            config (RunnableConfig): Configuration of the related checkpoint.
-            writes (Sequence[Tuple[str, Any]]): List of writes to store, each as (channel, value) pair.
-            task_id (str): Identifier for the task creating the writes.
+            config: Configuration of the related checkpoint.
+            writes: List of writes to store, each as (channel, value) pair.
+            task_id: Identifier for the task creating the writes.
         """
         query = (
             self.UPSERT_CHECKPOINT_WRITES_SQL
@@ -300,7 +300,7 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
     async def adelete_thread(self, thread_id: str) -> None:
         """Delete all checkpoints and writes associated with a thread ID.
         Args:
-            thread_id (str): The thread ID to delete.
+            thread_id: The thread ID to delete.
         Returns:
             None
         """
@@ -323,7 +323,7 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         """Create a database cursor as a context manager.
 
         Args:
-            pipeline (bool): whether to use transaction context manager and handle concurrency
+            pipeline: whether to use transaction context manager and handle concurrency
         """
         async with _ainternal.get_connection(self.conn) as conn:
             if pipeline:
@@ -357,10 +357,10 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         on the provided config. The checkpoints are ordered by checkpoint ID in descending order (newest first).
 
         Args:
-            config (Optional[RunnableConfig]): Base configuration for filtering checkpoints.
-            filter (Optional[Dict[str, Any]]): Additional filtering criteria for metadata.
-            before (Optional[RunnableConfig]): If provided, only checkpoints before the specified checkpoint ID are returned. Defaults to None.
-            limit (Optional[int]): Maximum number of checkpoints to return.
+            config: Base configuration for filtering checkpoints.
+            filter: Additional filtering criteria for metadata.
+            before: If provided, only checkpoints before the specified checkpoint ID are returned. Defaults to None.
+            limit: Maximum number of checkpoints to return.
 
         Yields:
             Iterator[CheckpointTuple]: An iterator of matching checkpoint tuples.
@@ -396,7 +396,7 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         for the given thread ID is retrieved.
 
         Args:
-            config (RunnableConfig): The config to use for retrieving the checkpoint.
+            config: The config to use for retrieving the checkpoint.
 
         Returns:
             Optional[CheckpointTuple]: The retrieved checkpoint tuple, or None if no matching checkpoint was found.
@@ -430,10 +430,10 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         with the provided config and its parent config (if any).
 
         Args:
-            config (RunnableConfig): The config to associate with the checkpoint.
-            checkpoint (Checkpoint): The checkpoint to save.
-            metadata (CheckpointMetadata): Additional metadata to save with the checkpoint.
-            new_versions (ChannelVersions): New channel versions as of this write.
+            config: The config to associate with the checkpoint.
+            checkpoint: The checkpoint to save.
+            metadata: Additional metadata to save with the checkpoint.
+            new_versions: New channel versions as of this write.
 
         Returns:
             RunnableConfig: Updated configuration after storing the checkpoint.
@@ -454,10 +454,10 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         This method saves intermediate writes associated with a checkpoint to the database.
 
         Args:
-            config (RunnableConfig): Configuration of the related checkpoint.
-            writes (Sequence[Tuple[str, Any]]): List of writes to store, each as (channel, value) pair.
-            task_id (str): Identifier for the task creating the writes.
-            task_path (str): Path of the task creating the writes.
+            config: Configuration of the related checkpoint.
+            writes: List of writes to store, each as (channel, value) pair.
+            task_id: Identifier for the task creating the writes.
+            task_path: Path of the task creating the writes.
         """
         return asyncio.run_coroutine_threadsafe(
             self.aput_writes(config, writes, task_id, task_path), self.loop
@@ -466,7 +466,7 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
     def delete_thread(self, thread_id: str) -> None:
         """Delete all checkpoints and writes associated with a thread ID.
         Args:
-            thread_id (str): The thread ID to delete.
+            thread_id: The thread ID to delete.
         Returns:
             None
         """

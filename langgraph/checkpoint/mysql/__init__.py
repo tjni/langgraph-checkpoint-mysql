@@ -49,7 +49,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         """Create a database cursor as a context manager.
 
         Args:
-            pipeline (bool): whether to use transaction context manager and handle concurrency
+            pipeline: whether to use transaction context manager and handle concurrency
         """
         with _internal.get_connection(self.conn) as conn:
             if pipeline:
@@ -103,10 +103,10 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         on the provided config. The checkpoints are ordered by checkpoint ID in descending order (newest first).
 
         Args:
-            config (RunnableConfig): The config to use for listing the checkpoints.
-            filter (Optional[Dict[str, Any]]): Additional filtering criteria for metadata. Defaults to None.
-            before (Optional[RunnableConfig]): If provided, only checkpoints before the specified checkpoint ID are returned. Defaults to None.
-            limit (Optional[int]): The maximum number of checkpoints to return. Defaults to None.
+            config: The config to use for listing the checkpoints.
+            filter: Additional filtering criteria for metadata. Defaults to None.
+            before: If provided, only checkpoints before the specified checkpoint ID are returned. Defaults to None.
+            limit: The maximum number of checkpoints to return. Defaults to None.
 
         Yields:
             Iterator[CheckpointTuple]: An iterator of checkpoint tuples.
@@ -177,7 +177,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         for the given thread ID is retrieved.
 
         Args:
-            config (RunnableConfig): The config to use for retrieving the checkpoint.
+            config: The config to use for retrieving the checkpoint.
 
         Returns:
             Optional[CheckpointTuple]: The retrieved checkpoint tuple, or None if no matching checkpoint was found.
@@ -273,10 +273,10 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         with the provided config and its parent config (if any).
 
         Args:
-            config (RunnableConfig): The config to associate with the checkpoint.
-            checkpoint (Checkpoint): The checkpoint to save.
-            metadata (CheckpointMetadata): Additional metadata to save with the checkpoint.
-            new_versions (ChannelVersions): New channel versions as of this write.
+            config: The config to associate with the checkpoint.
+            checkpoint: The checkpoint to save.
+            metadata: Additional metadata to save with the checkpoint.
+            new_versions: New channel versions as of this write.
 
         Returns:
             RunnableConfig: Updated configuration after storing the checkpoint.
@@ -343,9 +343,9 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         This method saves intermediate writes associated with a checkpoint to the MySQL database.
 
         Args:
-            config (RunnableConfig): Configuration of the related checkpoint.
-            writes (List[Tuple[str, Any]]): List of writes to store.
-            task_id (str): Identifier for the task creating the writes.
+            config: Configuration of the related checkpoint.
+            writes: List of writes to store.
+            task_id: Identifier for the task creating the writes.
         """
         query = (
             self.UPSERT_CHECKPOINT_WRITES_SQL
@@ -368,7 +368,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
     def delete_thread(self, thread_id: str) -> None:
         """Delete all checkpoints and writes associated with a thread ID.
         Args:
-            thread_id (str): The thread ID to delete.
+            thread_id: The thread ID to delete.
         Returns:
             None
         """

@@ -45,7 +45,7 @@ class AIOMySQLSaver(BaseAsyncMySQLSaver[aiomysql.Connection, aiomysql.DictCursor
         """Create a new AIOMySQLSaver instance from a connection string.
 
         Args:
-            conn_string (str): The MySQL connection info string.
+            conn_string: The MySQL connection info string.
 
         Returns:
             AIOMySQLSaver: A new AIOMySQLSaver instance.
@@ -92,7 +92,7 @@ class ShallowAIOMySQLSaver(
         """Create a new ShallowAIOMySQLSaver instance from a connection string.
 
         Args:
-            conn_string (str): The MySQL connection info string.
+            conn_string: The MySQL connection info string.
 
         Returns:
             ShallowAIOMySQLSaver: A new ShallowAIOMySQLSaver instance.
