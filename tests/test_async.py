@@ -282,7 +282,7 @@ def test_data() -> dict[str, Any]:
 @pytest.mark.parametrize("saver_name", SAVERS)
 async def test_combined_metadata(saver_name: str, test_data: dict[str, Any]) -> None:
     async with _saver(saver_name) as saver:
-        config = {
+        config: RunnableConfig = {
             "configurable": {
                 "thread_id": "thread-2",
                 "checkpoint_ns": "",
@@ -299,6 +299,7 @@ async def test_combined_metadata(saver_name: str, test_data: dict[str, Any]) -> 
         }
         await saver.aput(config, chkpnt, metadata, {})
         checkpoint = await saver.aget_tuple(config)
+        assert checkpoint
         assert checkpoint.metadata == {
             **metadata,
             "thread_id": "thread-2",

@@ -1,21 +1,18 @@
 """Shared utility functions for the MySQL checkpoint & storage classes."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, closing, contextmanager
 from typing import (
     Any,
-    ContextManager,
-    Mapping,
     Optional,
     Protocol,
-    Sequence,
     TypeVar,
     Union,
     cast,
 )
 
 
-class DictCursor(ContextManager, Protocol):
+class DictCursor(AbstractContextManager, Protocol):
     """
     Protocol that a cursor should implement.
 

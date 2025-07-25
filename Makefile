@@ -18,8 +18,8 @@ MYSQL_VERSIONS ?= 8
 test_mysql_version:
 	@echo "Testing MySQL $(MYSQL_VERSION)"
 	@MYSQL_VERSION=$(MYSQL_VERSION) make start-mysql
-	@poetry run pytest --ignore=langgraph-tests $(TEST) && \
-	poetry run pytest -n auto --dist worksteal langgraph-tests || ( \
+	@uv run pytest --ignore=langgraph-tests $(TEST) && \
+	uv run pytest -n auto --dist worksteal langgraph-tests || ( \
 	  EXIT_CODE=$$?; \
 	  make stop-mysql; \
 	  echo "Finished testing MySQL $(MYSQL_VERSION); Exit code: $$EXIT_CODE"; \
@@ -49,8 +49,8 @@ MARIADB_VERSIONS ?= 10
 test_mariadb_version:
 	@echo "Testing MariaDB $(MARIADB_VERSION)"
 	@MARIADB_VERSION=$(MARIADB_VERSION) make start-mariadb
-	@poetry run pytest --ignore=langgraph-tests $(TEST) && \
-	poetry run pytest -n auto --dist worksteal langgraph-tests || ( \
+	@uv run pytest --ignore=langgraph-tests $(TEST) && \
+	uv run pytest -n auto --dist worksteal langgraph-tests || ( \
 	  EXIT_CODE=$$?; \
 	  make stop-mariadb; \
 	  echo "Finished testing MariaDB $(MARIADB_VERSION); Exit code: $$EXIT_CODE"; \
@@ -69,7 +69,7 @@ test-mariadb:
 TEST ?= .
 test_watch:
 	MYSQL_VERSION=$(MYSQL_VERSION) make start-mysql; \
-	poetry run ptw $(TEST); \
+	uv run ptw $(TEST); \
 	EXIT_CODE=$$?; \
 	make stop-mysql; \
 	exit $$EXIT_CODE
@@ -88,12 +88,12 @@ lint_tests: PYTHON_FILES=tests
 lint_tests: MYPY_CACHE=.mypy_cache_test
 
 lint lint_diff lint_package lint_tests:
-	poetry run ruff check .
-	[ "$(PYTHON_FILES)" = "" ] || poetry run ruff format $(PYTHON_FILES) --diff
-	[ "$(PYTHON_FILES)" = "" ] || poetry run ruff check --select I $(PYTHON_FILES)
+	uv run ruff check .
+	[ "$(PYTHON_FILES)" = "" ] || uv run ruff format $(PYTHON_FILES) --diff
+	[ "$(PYTHON_FILES)" = "" ] || uv run ruff check --select I $(PYTHON_FILES)
 	[ "$(PYTHON_FILES)" = "" ] || mkdir -p $(MYPY_CACHE)
-	[ "$(PYTHON_FILES)" = "" ] || poetry run mypy $(PYTHON_FILES) --cache-dir $(MYPY_CACHE)
+	[ "$(PYTHON_FILES)" = "" ] || uv run mypy $(PYTHON_FILES) --cache-dir $(MYPY_CACHE)
 
 format format_diff:
-	poetry run ruff format $(PYTHON_FILES)
-	poetry run ruff check --select I --fix $(PYTHON_FILES)
+	uv run ruff format $(PYTHON_FILES)
+	uv run ruff check --select I --fix $(PYTHON_FILES)

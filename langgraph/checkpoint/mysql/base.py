@@ -99,28 +99,34 @@ MIGRATIONS = [
     # primary key, but hashed to fit into the primary key size limit.
     f"""
     ALTER TABLE checkpoints
-    {mysql_mariadb_branch(
-        "ADD COLUMN checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
-        "ADD COLUMN checkpoint_ns_hash BINARY(16),"
-    )}
+    {
+        mysql_mariadb_branch(
+            "ADD COLUMN checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
+            "ADD COLUMN checkpoint_ns_hash BINARY(16),",
+        )
+    }
     DROP PRIMARY KEY,
     ADD PRIMARY KEY (thread_id, checkpoint_ns_hash, checkpoint_id);
     """,
     f"""
     ALTER TABLE checkpoint_blobs
-    {mysql_mariadb_branch(
-        "ADD COLUMN checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
-        "ADD COLUMN checkpoint_ns_hash BINARY(16),"
-    )}
+    {
+        mysql_mariadb_branch(
+            "ADD COLUMN checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
+            "ADD COLUMN checkpoint_ns_hash BINARY(16),",
+        )
+    }
     DROP PRIMARY KEY,
     ADD PRIMARY KEY (thread_id, checkpoint_ns_hash, channel, version);
     """,
     f"""
     ALTER TABLE checkpoint_writes
-    {mysql_mariadb_branch(
-        "ADD COLUMN checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
-        "ADD COLUMN checkpoint_ns_hash BINARY(16),"
-    )}
+    {
+        mysql_mariadb_branch(
+            "ADD COLUMN checkpoint_ns_hash BINARY(16) AS (UNHEX(MD5(checkpoint_ns))) STORED,",
+            "ADD COLUMN checkpoint_ns_hash BINARY(16),",
+        )
+    }
     DROP PRIMARY KEY,
     ADD PRIMARY KEY (thread_id, checkpoint_ns_hash, checkpoint_id, task_id, idx);
     """,

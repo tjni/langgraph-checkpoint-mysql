@@ -1,22 +1,19 @@
 """Shared async utility functions for the MySQL checkpoint & storage classes."""
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import (
     Any,
-    AsyncContextManager,
     Generic,
-    Mapping,
     Optional,
     Protocol,
-    Sequence,
     TypeVar,
     Union,
     cast,
 )
 
 
-class AsyncDictCursor(AsyncContextManager, Protocol):
+class AsyncDictCursor(AbstractAsyncContextManager, Protocol):
     """
     Protocol that a cursor should implement.
 
@@ -41,7 +38,7 @@ class AsyncDictCursor(AsyncContextManager, Protocol):
 R = TypeVar("R", bound=AsyncDictCursor)  # cursor type
 
 
-class AsyncConnection(AsyncContextManager, Protocol):
+class AsyncConnection(AbstractAsyncContextManager, Protocol):
     async def begin(self) -> None:
         """Begin transaction."""
         ...
