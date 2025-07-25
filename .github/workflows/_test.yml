@@ -3,9 +3,6 @@ name: test
 on:
   workflow_call
 
-env:
-  POETRY_VERSION: "2.1.2"
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,25 +29,23 @@ jobs:
     name: "test python ${{ matrix.python-version }} | ${{ matrix.database.db }} ${{ matrix.database.version }}"
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }} + Poetry ${{ env.POETRY_VERSION }}
-        uses: "./.github/actions/poetry_setup"
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
-          poetry-version: ${{ env.POETRY_VERSION }}
-          cache-key: test
+          enable-cache: true
+          cache-suffix: test-${{ inputs.working-directory }}
 
       - name: Install dependencies
         shell: bash
-        run: |
-          poetry install --with dev
+        run: uv sync --frozen --group dev
 
       - name: Run MySQL tests
         if: ${{ matrix.database.db == 'mysql' }}
         shell: bash
         env:
           MYSQL_VERSIONS: ${{ matrix.database.version }}
-        run: |
-          make test
+        run: make test
 
       - name: Run MariaDB tests
         if: ${{ matrix.database.db == 'mariadb' }}

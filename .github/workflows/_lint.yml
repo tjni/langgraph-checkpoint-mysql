@@ -4,8 +4,6 @@ on:
   workflow_call
 
 env:
-  POETRY_VERSION: "2.1.2"
-
   # This env var allows us to get inline annotations when ruff has complaints.
   RUFF_OUTPUT_FORMAT: github
 
@@ -29,30 +27,17 @@ jobs:
       - name: Get changed files
         id: changed-files
         uses: Ana06/get-changed-files@v2.3.0
-      - name: Set up Python ${{ matrix.python-version }} + Poetry ${{ env.POETRY_VERSION }}
+      - name: Set up Python ${{ matrix.python-version }}
         if: steps.changed-files.outputs.all
-        uses: "./.github/actions/poetry_setup"
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
-          poetry-version: ${{ env.POETRY_VERSION }}
-          cache-key: lint
-
-      - name: Check Poetry File
-        if: steps.changed-files.outputs.all
-        shell: bash
-        run: poetry check
+          enable-cache: true
+          cache-suffix: lint-${{ inputs.working-directory }}
 
       - name: Install dependencies
         if: steps.changed-files.outputs.all
-        # Also installs dev/lint/test/typing dependencies, to ensure we have
-        # type hints for as many of our libraries as possible.
-        # This helps catch errors that require dependencies to be spotted, for example:
-        # https://github.com/langchain-ai/langchain/pull/10249/files#diff-935185cd488d015f026dcd9e19616ff62863e8cde8c0bee70318d3ccbca98341
-        #
-        # If you change this configuration, make sure to change the `cache-key`
-        # in the `poetry_setup` action above to stop using the old cache.
-        # It doesn't matter how you change it, any change will cause a cache-bust.
-        run: poetry install --with dev
+        run: uv sync --frozen --group dev
 
       - name: Get .mypy_cache to speed up mypy
         if: steps.changed-files.outputs.all
@@ -62,7 +47,7 @@ jobs:
         with:
           path: |
             .mypy_cache
-          key: mypy-lint-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+          key: mypy-lint-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
 
       - name: Analysing package code with our lint
         if: steps.changed-files.outputs.all
@@ -76,16 +61,7 @@ jobs:
 
       - name: Install test dependencies
         if: steps.changed-files.outputs.all
-        # Also installs dev/lint/test/typing dependencies, to ensure we have
-        # type hints for as many of our libraries as possible.
-        # This helps catch errors that require dependencies to be spotted, for example:
-        # https://github.com/langchain-ai/langchain/pull/10249/files#diff-935185cd488d015f026dcd9e19616ff62863e8cde8c0bee70318d3ccbca98341
-        #
-        # If you change this configuration, make sure to change the `cache-key`
-        # in the `poetry_setup` action above to stop using the old cache.
-        # It doesn't matter how you change it, any change will cause a cache-bust.
-        run: |
-          poetry install --with dev
+        run: uv sync --group dev
 
       - name: Get .mypy_cache_test to speed up mypy
         if: steps.changed-files.outputs.all
@@ -95,7 +71,7 @@ jobs:
         with:
           path: |
             .mypy_cache_test
-          key: mypy-test-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+          key: mypy-test-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
 
       - name: Analysing tests with our lint
         if: steps.changed-files.outputs.all

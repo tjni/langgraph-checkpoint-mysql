@@ -5,7 +5,6 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  POETRY_VERSION: "2.1.2"
 
 jobs:
   build:
@@ -21,12 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python + Poetry ${{ env.POETRY_VERSION }}
-        uses: "./.github/actions/poetry_setup"
+      - name: Set up Python
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          poetry-version: ${{ env.POETRY_VERSION }}
-          cache-key: release
+          enable-cache: true
+          cache-suffix: "release"
 
       # We want to keep this build stage *separate* from the release stage,
       # so that there's no sharing of permissions between them.
@@ -40,7 +39,7 @@ jobs:
       # > from the publish job.
       # https://github.com/pypa/gh-action-pypi-publish#non-goals
       - name: Build project for distribution
-        run: poetry build
+        run: uv build
 
       - name: Upload build
         uses: actions/upload-artifact@v4
@@ -52,8 +51,8 @@ jobs:
         id: check-version
         shell: bash
         run: |
-          PKG_NAME="$(poetry version | cut -d ' ' -f 1)"
-          VERSION="$(poetry version --short)"
+          PKG_NAME=$(grep -m 1 "^name = " pyproject.toml | cut -d '"' -f 2)
+          VERSION=$(grep -m 1 "^version = " pyproject.toml | cut -d '"' -f 2)
           SHORT_PKG_NAME="$(echo "$PKG_NAME" | sed -e 's/langgraph//g' -e 's/-//g')"
           if [ -z $SHORT_PKG_NAME ]; then
             TAG="$VERSION"
@@ -151,11 +150,11 @@ jobs:
       # - The package is published, and it breaks on the missing dependency when
       #   used in the real world.
 
-      - name: Set up Python + Poetry ${{ env.POETRY_VERSION }}
-        uses: "./.github/actions/poetry_setup"
+      - name: Set up Python
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          poetry-version: ${{ env.POETRY_VERSION }}
+          enable-cache: true
 
       - name: Import published package
         shell: bash
@@ -172,12 +171,12 @@ jobs:
         # - attempt install again after 5 seconds if it fails because there is
         #   sometimes a delay in availability on test pypi
         run: |
-          poetry run pip install \
+          uv run pip install \
             --extra-index-url https://test.pypi.org/simple/ \
             "$PKG_NAME[pymysql]==$VERSION" || \
           ( \
             sleep 5 && \
-            poetry run pip install \
+            uv run pip install \
               --extra-index-url https://test.pypi.org/simple/ \
               "$PKG_NAME[pymysql]==$VERSION" \
           )
@@ -186,10 +185,10 @@ jobs:
           # i.e. import langgraph.checkpoint or langgraph.checkpoint.sqlite
           IMPORT_NAME="$(echo "$PKG_NAME" | sed s/-/./g)"
 
-          poetry run python -c "import $IMPORT_NAME; print(dir($IMPORT_NAME))"
+          uv run python -c "import $IMPORT_NAME; print(dir($IMPORT_NAME))"
 
       - name: Import test dependencies
-        run: poetry install --with dev
+        run: uv sync --group dev
 
       # Overwrite the local version of the package with the test PyPI version.
       - name: Import published package (again)
@@ -198,7 +197,7 @@ jobs:
           PKG_NAME: ${{ needs.build.outputs.pkg-name }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          poetry run pip install \
+          uv run pip install \
             --extra-index-url https://test.pypi.org/simple/ \
             "$PKG_NAME==$VERSION"
 
@@ -223,12 +222,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python + Poetry ${{ env.POETRY_VERSION }}
-        uses: "./.github/actions/poetry_setup"
+      - name: Set up Python
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          poetry-version: ${{ env.POETRY_VERSION }}
-          cache-key: release
+          enable-cache: true
+          cache-suffix: "release"
 
       - uses: actions/download-artifact@v4
         with:
@@ -260,12 +259,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python + Poetry ${{ env.POETRY_VERSION }}
-        uses: "./.github/actions/poetry_setup"
+      - name: Set up Python
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          poetry-version: ${{ env.POETRY_VERSION }}
-          cache-key: release
+          enable-cache: true
+          cache-suffix: "release"
 
       - uses: actions/download-artifact@v4
         with:
