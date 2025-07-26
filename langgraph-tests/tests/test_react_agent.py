@@ -1,12 +1,9 @@
+from collections.abc import Sequence
 from typing import (
     Any,
     Callable,
-    Dict,
-    List,
     Literal,
     Optional,
-    Sequence,
-    Type,
     Union,
 )
 
@@ -31,11 +28,6 @@ from langgraph.prebuilt import (
 from langgraph.prebuilt.chat_agent_executor import (
     StructuredResponse,
 )
-from tests.conftest import (
-    ALL_CHECKPOINTERS_ASYNC,
-    ALL_CHECKPOINTERS_SYNC,
-    awith_checkpointer,
-)
 from tests.messages import _AnyIdHumanMessage
 
 pytestmark = pytest.mark.anyio
@@ -51,8 +43,8 @@ class FakeToolCallingModel(BaseChatModel):
 
     def _generate(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
+        messages: list[BaseMessage],
+        stop: Optional[list[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
@@ -74,7 +66,7 @@ class FakeToolCallingModel(BaseChatModel):
         return "fake-tool-call-model"
 
     def with_structured_output(
-        self, schema: Type[BaseModel]
+        self, schema: type[BaseModel]
     ) -> Runnable[LanguageModelInput, StructuredResponse]:
         if self.structured_response is None:
             raise ValueError("Structured response is not set")
@@ -83,7 +75,7 @@ class FakeToolCallingModel(BaseChatModel):
 
     def bind_tools(
         self,
-        tools: Sequence[Union[Dict[str, Any], Type[BaseModel], Callable, BaseTool]],
+        tools: Sequence[Union[dict[str, Any], type[BaseModel], Callable, BaseTool]],
         **kwargs: Any,
     ) -> Runnable[LanguageModelInput, BaseMessage]:
         if len(tools) == 0:
@@ -116,20 +108,16 @@ class FakeToolCallingModel(BaseChatModel):
         return self.bind(tools=tool_dicts)
 
 
-@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
 @pytest.mark.parametrize("version", REACT_TOOL_CALL_VERSIONS)
 def test_no_prompt(
-    request: pytest.FixtureRequest, checkpointer_name: str, version: str
+    sync_checkpointer: BaseCheckpointSaver, version: str
 ) -> None:
-    checkpointer: BaseCheckpointSaver = request.getfixturevalue(
-        "checkpointer_" + checkpointer_name
-    )
     model = FakeToolCallingModel()
 
     agent = create_react_agent(
         model,
         [],
-        checkpointer=checkpointer,
+        checkpointer=sync_checkpointer,
         version=version,
     )
     inputs = [HumanMessage("hi?")]
@@ -138,51 +126,47 @@ def test_no_prompt(
     expected_response = {"messages": inputs + [AIMessage(content="hi?", id="0")]}
     assert response == expected_response
 
-    if checkpointer:
-        saved = checkpointer.get_tuple(thread)
-        assert saved is not None
-        assert saved.checkpoint["channel_values"] == {
-            "messages": [
-                _AnyIdHumanMessage(content="hi?"),
-                AIMessage(content="hi?", id="0"),
-            ],
-        }
-        assert saved.metadata == {
-            "parents": {},
-            "source": "loop",
-            "writes": {"agent": {"messages": [AIMessage(content="hi?", id="0")]}},
-            "step": 1,
-            "thread_id": "123",
-        }
-        assert saved.pending_writes == []
+    saved = sync_checkpointer.get_tuple(thread)
+    assert saved is not None
+    assert saved.checkpoint["channel_values"] == {
+        "messages": [
+            _AnyIdHumanMessage(content="hi?"),
+            AIMessage(content="hi?", id="0"),
+        ],
+    }
+    assert saved.metadata == {
+        "parents": {},
+        "source": "loop",
+        "writes": {"agent": {"messages": [AIMessage(content="hi?", id="0")]}},
+        "step": 1,
+        "thread_id": "123",
+    }
+    assert saved.pending_writes == []
 
 
-@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_ASYNC)
-async def test_no_prompt_async(checkpointer_name: str) -> None:
-    async with awith_checkpointer(checkpointer_name) as checkpointer:
-        model = FakeToolCallingModel()
+async def test_no_prompt_async(async_checkpointer: BaseCheckpointSaver) -> None:
+    model = FakeToolCallingModel()
 
-        agent = create_react_agent(model, [], checkpointer=checkpointer)
-        inputs = [HumanMessage("hi?")]
-        thread = {"configurable": {"thread_id": "123"}}
-        response = await agent.ainvoke({"messages": inputs}, thread, debug=True)
-        expected_response = {"messages": inputs + [AIMessage(content="hi?", id="0")]}
-        assert response == expected_response
+    agent = create_react_agent(model, [], checkpointer=async_checkpointer)
+    inputs = [HumanMessage("hi?")]
+    thread = {"configurable": {"thread_id": "123"}}
+    response = await agent.ainvoke({"messages": inputs}, thread, debug=True)
+    expected_response = {"messages": inputs + [AIMessage(content="hi?", id="0")]}
+    assert response == expected_response
 
-        if checkpointer:
-            saved = await checkpointer.aget_tuple(thread)
-            assert saved is not None
-            assert saved.checkpoint["channel_values"] == {
-                "messages": [
-                    _AnyIdHumanMessage(content="hi?"),
-                    AIMessage(content="hi?", id="0"),
-                ],
-            }
-            assert saved.metadata == {
-                "parents": {},
-                "source": "loop",
-                "writes": {"agent": {"messages": [AIMessage(content="hi?", id="0")]}},
-                "step": 1,
-                "thread_id": "123",
-            }
-            assert saved.pending_writes == []
+    saved = await async_checkpointer.aget_tuple(thread)
+    assert saved is not None
+    assert saved.checkpoint["channel_values"] == {
+        "messages": [
+            _AnyIdHumanMessage(content="hi?"),
+            AIMessage(content="hi?", id="0"),
+        ],
+    }
+    assert saved.metadata == {
+        "parents": {},
+        "source": "loop",
+        "writes": {"agent": {"messages": [AIMessage(content="hi?", id="0")]}},
+        "step": 1,
+        "thread_id": "123",
+    }
+    assert saved.pending_writes == []
