@@ -11,8 +11,13 @@ DEFAULT_BASE_URI = "mysql://mysql:mysql@localhost:5441/"
 DEFAULT_URI = DEFAULT_BASE_URI + "mysql"
 
 
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
 @pytest.fixture(scope="function")
-async def conn() -> AsyncIterator[aiomysql.Connection]:
+async def conn(anyio_backend: str) -> AsyncIterator[aiomysql.Connection]:
     parsed = urllib.parse.urlparse(DEFAULT_URI)
     async with await aiomysql.connect(
         user=parsed.username,

@@ -26,6 +26,8 @@ from langgraph.checkpoint.serde.types import TASKS
 from langgraph.graph import END, START, MessagesState, StateGraph
 from tests.conftest import DEFAULT_BASE_URI
 
+pytestmark = pytest.mark.anyio
+
 SAVERS = [
     "aiomysql",
     "aiomysql_pool",

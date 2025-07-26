@@ -25,6 +25,8 @@ from tests.conftest import (
     get_pymysql_sqlalchemy_pool,
 )
 
+pytestmark = pytest.mark.anyio
+
 SAVERS = [
     "base",
     "shallow",

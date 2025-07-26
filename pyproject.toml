@@ -31,7 +31,6 @@ dev = [
   "codespell",
   "pytest",
   "anyio",
-  "pytest-asyncio",
   "pytest-mock",
   "pytest-watcher",
   "mypy",
@@ -39,8 +38,9 @@ dev = [
   "aiomysql>=0.2.0",
   "asyncmy>=0.2.10",
   "types-PyMySQL>=1.1.0",
-  "langgraph==0.4.1",
+  "langgraph",
   "langgraph-checkpoint==2.0.26",
+  "langgraph-checkpoint-sqlite",
   "syrupy>=4.0.2",
   "pytest-repeat>=0.9.3",
   "pytest-xdist[psutil]>=3.6.1",
@@ -50,12 +50,14 @@ dev = [
 [tool.uv]
 default-groups = ["dev"]
 
+[tool.uv.sources]
+langgraph = { git = "https://github.com/langchain-ai/langgraph", rev = "85522ec6a69d5476688debb2d072ab126752a521", subdirectory = "libs/langgraph" }
+
 [tool.hatch.build.targets.wheel]
 include = ["langgraph"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config --durations=5 -vv"
-asyncio_mode = "auto"
 
 [tool.ruff]
 lint.select = [
@@ -67,6 +69,7 @@ lint.select = [
 ]
 lint.ignore = ["E501", "B008", "UP007", "UP006"]
 exclude = ["langgraph-tests"]
+target-version = "py39"
 
 [tool.mypy]
 # https://mypy.readthedocs.io/en/stable/config_file.html

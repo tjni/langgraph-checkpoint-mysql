@@ -15,6 +15,8 @@ from langgraph.store.mysql.aio_base import BaseAsyncMySQLStore
 from langgraph.store.mysql.asyncmy import AsyncMyStore
 from tests.conftest import DEFAULT_BASE_URI
 
+pytestmark = pytest.mark.anyio
+
 
 @pytest.fixture(
     scope="function", params=["aiomysql", "aiomysql_pool", "asyncmy", "asyncmy_pool"]
