@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+from urllib.parse import quote_plus
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -26,7 +27,7 @@ class AsyncMyStore(BaseAsyncMySQLStore[Connection, DictCursor]):
         return {
             "host": parsed.hostname or "localhost",
             "user": parsed.username,
-            "password": parsed.password or "",
+            "password": quote_plus(parsed.password or ""),
             "db": parsed.path[1:] or None,
             "port": parsed.port or 3306,
             "unix_socket": params_as_dict.get("unix_socket"),
