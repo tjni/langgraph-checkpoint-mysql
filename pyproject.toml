@@ -31,7 +31,6 @@ dev = [
   "codespell",
   "pytest",
   "anyio",
-  "pytest-asyncio",
   "pytest-mock",
   "pytest-watcher",
   "mypy",
@@ -59,7 +58,6 @@ include = ["langgraph"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config --durations=5 -vv"
-asyncio_mode = "auto"
 
 [tool.ruff]
 lint.select = [
