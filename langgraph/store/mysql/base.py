@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -10,7 +12,6 @@ from typing import (
     Any,
     Callable,
     Generic,
-    Optional,
     TypeVar,
     Union,
     cast,
@@ -62,7 +63,7 @@ C = TypeVar("C", bound=Union[_internal.Conn, _ainternal.Conn])  # connection typ
 class BaseMySQLStore(Generic[C]):
     MIGRATIONS = MIGRATIONS
     conn: C
-    _deserializer: Optional[Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]]
+    _deserializer: Callable[[bytes | orjson.Fragment], dict[str, Any]] | None
 
     def _get_batch_GET_ops_queries(
         self,
@@ -289,9 +290,7 @@ class BaseSyncMySQLStore(
         self,
         conn: _internal.Conn[_internal.C],
         *,
-        deserializer: Optional[
-            Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]
-        ] = None,
+        deserializer: Callable[[bytes | orjson.Fragment], dict[str, Any]] | None = None,
     ) -> None:
         super().__init__()
         self._deserializer = deserializer
@@ -473,7 +472,7 @@ def _row_to_item(
     namespace: tuple[str, ...],
     row: Row,
     *,
-    loader: Optional[Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]] = None,
+    loader: Callable[[bytes | orjson.Fragment], dict[str, Any]] | None = None,
 ) -> Item:
     """Convert a row from the database into an Item."""
     loader = loader or _json_loads
@@ -491,7 +490,7 @@ def _row_to_search_item(
     namespace: tuple[str, ...],
     row: Row,
     *,
-    loader: Optional[Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]] = None,
+    loader: Callable[[bytes | orjson.Fragment], dict[str, Any]] | None = None,
 ) -> SearchItem:
     """Convert a row from the database into an Item."""
     loader = loader or _json_loads
@@ -522,7 +521,7 @@ def _group_ops(ops: Iterable[Op]) -> tuple[dict[type, list[tuple[int, Op]]], int
     return grouped_ops, tot
 
 
-def _json_loads(content: Union[bytes, orjson.Fragment]) -> Any:
+def _json_loads(content: bytes | orjson.Fragment) -> Any:
     if isinstance(content, orjson.Fragment):
         if hasattr(content, "buf"):
             content = content.buf
@@ -534,7 +533,7 @@ def _json_loads(content: Union[bytes, orjson.Fragment]) -> Any:
     return orjson.loads(cast(bytes, content))
 
 
-def _decode_ns_bytes(namespace: Union[str, bytes, list]) -> tuple[str, ...]:
+def _decode_ns_bytes(namespace: str | bytes | list) -> tuple[str, ...]:
     if isinstance(namespace, list):
         return tuple(namespace)
     if isinstance(namespace, bytes):

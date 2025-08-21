@@ -1,10 +1,11 @@
 """Shared utility functions for the MySQL checkpoint & storage classes."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, closing, contextmanager
 from typing import (
     Any,
-    Optional,
     Protocol,
     TypeVar,
     Union,
@@ -22,13 +23,13 @@ class DictCursor(AbstractContextManager, Protocol):
     def execute(
         self,
         operation: str,
-        parameters: Union[Sequence[Any], Mapping[str, Any]] = ...,
+        parameters: Sequence[Any] | Mapping[str, Any] = ...,
         /,
     ) -> object: ...
     def executemany(
         self, operation: str, seq_of_parameters: Sequence[Sequence[Any]], /
     ) -> object: ...
-    def fetchone(self) -> Optional[dict[str, Any]]: ...
+    def fetchone(self) -> dict[str, Any] | None: ...
     def fetchall(self) -> Sequence[dict[str, Any]]: ...
 
 

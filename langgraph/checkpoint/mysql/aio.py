@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import urllib.parse
 import warnings
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import aiomysql  # type: ignore
 from typing_extensions import Self, override
@@ -40,7 +42,7 @@ class AIOMySQLSaver(BaseAsyncMySQLSaver[aiomysql.Connection, aiomysql.DictCursor
         cls,
         conn_string: str,
         *,
-        serde: Optional[SerializerProtocol] = None,
+        serde: SerializerProtocol | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new AIOMySQLSaver instance from a connection string.
 
@@ -71,7 +73,7 @@ class ShallowAIOMySQLSaver(
     def __init__(
         self,
         conn: aiomysql.Connection,
-        serde: Optional[SerializerProtocol] = None,
+        serde: SerializerProtocol | None = None,
     ) -> None:
         warnings.warn(
             "ShallowAIOMySQLSaver is deprecated as of version 2.0.15 and will be removed in 3.0.0. "
@@ -87,7 +89,7 @@ class ShallowAIOMySQLSaver(
         cls,
         conn_string: str,
         *,
-        serde: Optional[SerializerProtocol] = None,
+        serde: SerializerProtocol | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new ShallowAIOMySQLSaver instance from a connection string.
 

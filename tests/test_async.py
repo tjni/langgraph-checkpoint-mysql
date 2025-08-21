@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from copy import deepcopy
-from typing import Any, Union
+from typing import Any
 from uuid import uuid4
 
 import aiomysql  # type: ignore
@@ -15,6 +17,8 @@ from langgraph.checkpoint.base import (
     ChannelVersions,
     Checkpoint,
     CheckpointMetadata,
+    create_checkpoint,
+    empty_checkpoint,
 )
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver, ShallowAIOMySQLSaver
 from langgraph.checkpoint.mysql.aio_base import BaseAsyncMySQLSaver
@@ -22,7 +26,6 @@ from langgraph.checkpoint.mysql.asyncmy import AsyncMySaver, ShallowAsyncMySaver
 from langgraph.checkpoint.mysql.shallow import BaseShallowAsyncMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
 from langgraph.graph import END, START, MessagesState, StateGraph
-from tests.checkpoint_utils import create_checkpoint, empty_checkpoint
 from tests.conftest import DEFAULT_BASE_URI
 
 pytestmark = pytest.mark.anyio
@@ -210,7 +213,7 @@ async def _asyncmy_shallow_saver() -> AsyncIterator[ShallowAsyncMySaver]:
 @asynccontextmanager
 async def _saver(
     name: str,
-) -> AsyncIterator[Union[BaseAsyncMySQLSaver, BaseShallowAsyncMySQLSaver]]:
+) -> AsyncIterator[BaseAsyncMySQLSaver | BaseShallowAsyncMySQLSaver]:
     if name == "aiomysql":
         async with _aiomysql_saver() as saver:
             yield saver
@@ -305,7 +308,6 @@ async def test_combined_metadata(saver_name: str, test_data: dict[str, Any]) -> 
         assert checkpoint
         assert checkpoint.metadata == {
             **metadata,
-            "thread_id": "thread-2",
             "run_id": "my_run_id",
         }
 

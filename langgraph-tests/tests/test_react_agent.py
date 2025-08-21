@@ -138,7 +138,6 @@ def test_no_prompt(
         "parents": {},
         "source": "loop",
         "step": 1,
-        "thread_id": "123",
     }
     assert saved.pending_writes == []
 
@@ -165,6 +164,5 @@ async def test_no_prompt_async(async_checkpointer: BaseCheckpointSaver) -> None:
         "parents": {},
         "source": "loop",
         "step": 1,
-        "thread_id": "123",
     }
     assert saved.pending_writes == []

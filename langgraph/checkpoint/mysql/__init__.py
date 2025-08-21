@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import json
 import threading
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any, Generic, Optional
+from typing import Any, Generic
 
 from langchain_core.runnables import RunnableConfig
 
@@ -34,7 +36,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
     def __init__(
         self,
         conn: _internal.Conn[_internal.C],
-        serde: Optional[SerializerProtocol] = None,
+        serde: SerializerProtocol | None = None,
     ) -> None:
         super().__init__(serde=serde)
 
@@ -92,11 +94,11 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
 
     def list(
         self,
-        config: Optional[RunnableConfig],
+        config: RunnableConfig | None,
         *,
-        filter: Optional[dict[str, Any]] = None,
-        before: Optional[RunnableConfig] = None,
-        limit: Optional[int] = None,
+        filter: dict[str, Any] | None = None,
+        before: RunnableConfig | None = None,
+        limit: int | None = None,
     ) -> Iterator[CheckpointTuple]:
         """List checkpoints from the database.
 
@@ -172,36 +174,9 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                         value["channel_values"],
                     )
             for value in values:
-                yield CheckpointTuple(
-                    {
-                        "configurable": {
-                            "thread_id": value["thread_id"],
-                            "checkpoint_ns": value["checkpoint_ns"],
-                            "checkpoint_id": value["checkpoint_id"],
-                        }
-                    },
-                    {
-                        **value["checkpoint"],
-                        "channel_values": self._load_blobs(value["channel_values"]),
-                    },
-                    self._load_metadata(value["metadata"]),
-                    (
-                        {
-                            "configurable": {
-                                "thread_id": value["thread_id"],
-                                "checkpoint_ns": value["checkpoint_ns"],
-                                "checkpoint_id": value["parent_checkpoint_id"],
-                            }
-                        }
-                        if value["parent_checkpoint_id"]
-                        else None
-                    ),
-                    self._load_writes(
-                        deserialize_pending_writes(value["pending_writes"])
-                    ),
-                )
+                yield self._load_checkpoint_tuple(value)
 
-    def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
+    def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         """Get a checkpoint tuple from the database.
 
         This method retrieves a checkpoint tuple from the MySQL database based on the
@@ -284,32 +259,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                         value["channel_values"],
                     )
 
-            return CheckpointTuple(
-                {
-                    "configurable": {
-                        "thread_id": thread_id,
-                        "checkpoint_ns": checkpoint_ns,
-                        "checkpoint_id": value["checkpoint_id"],
-                    }
-                },
-                {
-                    **value["checkpoint"],
-                    "channel_values": self._load_blobs(value["channel_values"]),
-                },
-                self._load_metadata(value["metadata"]),
-                (
-                    {
-                        "configurable": {
-                            "thread_id": thread_id,
-                            "checkpoint_ns": checkpoint_ns,
-                            "checkpoint_id": value["parent_checkpoint_id"],
-                        }
-                    }
-                    if value["parent_checkpoint_id"]
-                    else None
-                ),
-                self._load_writes(deserialize_pending_writes(value["pending_writes"])),
-            )
+            return self._load_checkpoint_tuple(value)
 
     def put(
         self,
@@ -436,3 +386,42 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                 "DELETE FROM checkpoint_writes WHERE thread_id = %s",
                 (str(thread_id),),
             )
+
+    def _load_checkpoint_tuple(self, value: dict[str, Any]) -> CheckpointTuple:
+        """
+        Convert a database row into a CheckpointTuple object.
+
+        Args:
+            value: A row from the database containing checkpoint data.
+
+        Returns:
+            CheckpointTuple: A structured representation of the checkpoint,
+            including its configuration, metadata, parent checkpoint (if any),
+            and pending writes.
+        """
+        return CheckpointTuple(
+            {
+                "configurable": {
+                    "thread_id": value["thread_id"],
+                    "checkpoint_ns": value["checkpoint_ns"],
+                    "checkpoint_id": value["checkpoint_id"],
+                }
+            },
+            {
+                **value["checkpoint"],
+                "channel_values": self._load_blobs(value["channel_values"]),
+            },
+            self._load_metadata(value["metadata"]),
+            (
+                {
+                    "configurable": {
+                        "thread_id": value["thread_id"],
+                        "checkpoint_ns": value["checkpoint_ns"],
+                        "checkpoint_id": value["parent_checkpoint_id"],
+                    }
+                }
+                if value["parent_checkpoint_id"]
+                else None
+            ),
+            self._load_writes(deserialize_pending_writes(value["pending_writes"])),
+        )

@@ -7,12 +7,9 @@ from typing import Annotated, Literal, Optional, Union
 import pytest
 from typing_extensions import TypedDict
 
-from langgraph.checkpoint.base import (
-    BaseCheckpointSaver,
-    CheckpointTuple,
-    copy_checkpoint,
-)
+from langgraph.checkpoint.base import BaseCheckpointSaver, CheckpointTuple
 from langgraph.graph.state import StateGraph
+from langgraph.pregel.checkpoint import copy_checkpoint
 from langgraph.types import Command, Interrupt, PregelTask, StateSnapshot, interrupt
 from langgraph.utils.config import patch_configurable
 from tests.any_int import AnyInt
@@ -46,7 +43,6 @@ def get_expected_history(*, exc_task_results: int = 0) -> list[StateSnapshot]:
                 "source": "loop",
                 "step": 4,
                 "parents": {},
-                "thread_id": "1",
             },
             created_at=AnyStr(),
             parent_config={
@@ -76,7 +72,6 @@ def get_expected_history(*, exc_task_results: int = 0) -> list[StateSnapshot]:
                 "source": "loop",
                 "step": 3,
                 "parents": {},
-                "thread_id": "1",
             },
             created_at=AnyStr(),
             parent_config={
@@ -134,7 +129,6 @@ def get_expected_history(*, exc_task_results: int = 0) -> list[StateSnapshot]:
                 "source": "loop",
                 "step": 2,
                 "parents": {},
-                "thread_id": "1",
             },
             created_at=AnyStr(),
             parent_config={
@@ -171,7 +165,6 @@ def get_expected_history(*, exc_task_results: int = 0) -> list[StateSnapshot]:
                 "source": "loop",
                 "step": 1,
                 "parents": {},
-                "thread_id": "1",
             },
             created_at=AnyStr(),
             parent_config={
@@ -221,7 +214,6 @@ def get_expected_history(*, exc_task_results: int = 0) -> list[StateSnapshot]:
                 "source": "loop",
                 "step": 0,
                 "parents": {},
-                "thread_id": "1",
             },
             created_at=AnyStr(),
             parent_config={
@@ -260,7 +252,6 @@ def get_expected_history(*, exc_task_results: int = 0) -> list[StateSnapshot]:
                 "source": "input",
                 "step": -1,
                 "parents": {},
-                "thread_id": "1",
             },
             created_at=AnyStr(),
             parent_config=None,
@@ -346,7 +337,6 @@ SAVED_CHECKPOINTS = {
                 "source": "loop",
                 "step": 4,
                 "parents": {},
-                "thread_id": "1",
             },
             parent_config={
                 "configurable": {
@@ -407,7 +397,6 @@ SAVED_CHECKPOINTS = {
                 "source": "loop",
                 "step": 3,
                 "parents": {},
-                "thread_id": "1",
             },
             parent_config={
                 "configurable": {
@@ -483,7 +472,6 @@ SAVED_CHECKPOINTS = {
                 "source": "loop",
                 "step": 2,
                 "parents": {},
-                "thread_id": "1",
             },
             parent_config={
                 "configurable": {
@@ -535,7 +523,6 @@ SAVED_CHECKPOINTS = {
                 "source": "loop",
                 "step": 1,
                 "parents": {},
-                "thread_id": "1",
             },
             parent_config={
                 "configurable": {
@@ -590,7 +577,6 @@ SAVED_CHECKPOINTS = {
                 "source": "loop",
                 "step": 0,
                 "parents": {},
-                "thread_id": "1",
             },
             parent_config={
                 "configurable": {
@@ -639,7 +625,6 @@ SAVED_CHECKPOINTS = {
                 "source": "input",
                 "step": -1,
                 "parents": {},
-                "thread_id": "1",
             },
             parent_config=None,
             pending_writes=[
@@ -723,7 +708,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 4,
                 "parents": {},
             },
@@ -785,7 +769,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 3,
                 "parents": {},
             },
@@ -864,7 +847,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 2,
                 "parents": {},
             },
@@ -920,7 +902,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 1,
                 "parents": {},
             },
@@ -980,7 +961,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 0,
                 "parents": {},
             },
@@ -1029,7 +1009,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "input",
-                "thread_id": "1",
                 "step": -1,
                 "parents": {},
             },
@@ -1115,7 +1094,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 4,
                 "parents": {},
             },
@@ -1177,7 +1155,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 3,
                 "parents": {},
             },
@@ -1256,7 +1233,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 2,
                 "parents": {},
             },
@@ -1312,7 +1288,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 1,
                 "parents": {},
             },
@@ -1372,7 +1347,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "loop",
-                "thread_id": "1",
                 "step": 0,
                 "parents": {},
             },
@@ -1421,7 +1395,6 @@ SAVED_CHECKPOINTS = {
             },
             metadata={
                 "source": "input",
-                "thread_id": "1",
                 "step": -1,
                 "parents": {},
             },
@@ -1541,7 +1514,9 @@ def test_latest_checkpoint_state_graph(
     app = builder.compile(checkpointer=sync_checkpointer)
     config = {"configurable": {"thread_id": "1"}}
 
-    assert [*app.stream({"query": "what is weather in sf"}, config)] == [
+    assert [
+        *app.stream({"query": "what is weather in sf"}, config, checkpoint_during=True)
+    ] == [
         {"rewrite_query": {"query": "query: what is weather in sf"}},
         {"analyzer_one": {"query": "analyzed: query: what is weather in sf"}},
         {"retriever_two": {"docs": ["doc3", "doc4"]}},
@@ -1557,7 +1532,7 @@ def test_latest_checkpoint_state_graph(
         },
     ]
 
-    assert [*app.stream(Command(resume=""), config)] == [
+    assert [*app.stream(Command(resume=""), config, checkpoint_during=True)] == [
         {"qa": {"answer": "doc1,doc2,doc3,doc4"}},
     ]
 
@@ -1582,7 +1557,10 @@ async def test_latest_checkpoint_state_graph_async(
     config = {"configurable": {"thread_id": "1"}}
 
     assert [
-        c async for c in app.astream({"query": "what is weather in sf"}, config)
+        c
+        async for c in app.astream(
+            {"query": "what is weather in sf"}, config, checkpoint_during=True
+        )
     ] == [
         {"rewrite_query": {"query": "query: what is weather in sf"}},
         {"analyzer_one": {"query": "analyzed: query: what is weather in sf"}},
@@ -1599,7 +1577,9 @@ async def test_latest_checkpoint_state_graph_async(
         },
     ]
 
-    assert [c async for c in app.astream(Command(resume=""), config)] == [
+    assert [
+        c async for c in app.astream(Command(resume=""), config, checkpoint_during=True)
+    ] == [
         {"qa": {"answer": "doc1,doc2,doc3,doc4"}},
     ]
 

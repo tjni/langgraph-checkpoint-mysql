@@ -23,6 +23,9 @@ There is currently no support for other drivers.
 
 > [!IMPORTANT]
 > When manually creating MySQL connections and passing them to `PyMySQLSaver` or `AIOMySQLSaver`, make sure to include `autocommit=True`.
+>
+> **Why this parameter is required:**
+> - `autocommit=True`: Required for the `.setup()` method to properly commit the checkpoint tables to the database. Without this, table creation may not be persisted.
 
 ```python
 from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver

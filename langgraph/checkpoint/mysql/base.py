@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import random
 from collections.abc import Sequence
@@ -256,7 +258,7 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
         self,
         pending_sends: list[tuple[str, bytes]],
         checkpoint: dict[str, Any],
-        channel_values: list[tuple[str, str, Optional[bytes]]],
+        channel_values: list[tuple[str, str, bytes | None]],
     ) -> None:
         if not pending_sends:
             return
@@ -269,11 +271,11 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
         checkpoint["channel_versions"][TASKS] = (
             max(checkpoint["channel_versions"].values())
             if checkpoint["channel_versions"]
-            else self.get_next_version(None)
+            else self.get_next_version(None, None)
         )
 
     def _load_blobs(
-        self, blob_values: list[tuple[str, str, Optional[bytes]]]
+        self, blob_values: list[tuple[str, str, bytes | None]]
     ) -> dict[str, Any]:
         if not blob_values:
             return {}
@@ -289,7 +291,7 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
         checkpoint_ns: str,
         values: dict[str, Any],
         versions: ChannelVersions,
-    ) -> list[tuple[str, str, str, str, str, str, Optional[bytes]]]:
+    ) -> list[tuple[str, str, str, str, str, str, bytes | None]]:
         if not versions:
             return []
 
@@ -385,7 +387,7 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
             # NOTE: we're using JSON serializer (not msgpack), so we need to remove null characters before writing
             return serialized_metadata.decode().replace("\\u0000", "")
 
-    def get_next_version(self, current: Optional[str]) -> str:
+    def get_next_version(self, current: str | None, channel: None) -> str:
         if current is None:
             current_v = 0
         elif isinstance(current, int):
@@ -398,9 +400,9 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
 
     def _search_where(
         self,
-        config: Optional[RunnableConfig],
+        config: RunnableConfig | None,
         filter: MetadataInput,
-        before: Optional[RunnableConfig] = None,
+        before: RunnableConfig | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Return WHERE clause predicates for alist() given config, filter, before.
 

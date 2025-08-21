@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import asynccontextmanager
-from typing import Any, Callable, Generic, Optional, Union, cast
+from typing import Any, Callable, Generic, cast
 
 import orjson
 
@@ -39,9 +41,7 @@ class BaseAsyncMySQLStore(
         self,
         conn: _ainternal.Conn[_ainternal.C],
         *,
-        deserializer: Optional[
-            Callable[[Union[bytes, orjson.Fragment]], dict[str, Any]]
-        ] = None,
+        deserializer: Callable[[bytes | orjson.Fragment], dict[str, Any]] | None = None,
     ) -> None:
         super().__init__()
         self._deserializer = deserializer

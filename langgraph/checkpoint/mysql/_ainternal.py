@@ -1,11 +1,12 @@
 """Shared async utility functions for the MySQL checkpoint & storage classes."""
 
+from __future__ import annotations
+
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import (
     Any,
     Generic,
-    Optional,
     Protocol,
     TypeVar,
     Union,
@@ -23,13 +24,13 @@ class AsyncDictCursor(AbstractAsyncContextManager, Protocol):
     async def execute(
         self,
         operation: str,
-        parameters: Union[Sequence[Any], Mapping[str, Any]] = ...,
+        parameters: Sequence[Any] | Mapping[str, Any] = ...,
         /,
     ) -> object: ...
     async def executemany(
         self, operation: str, seq_of_parameters: Sequence[Sequence[Any]], /
     ) -> object: ...
-    async def fetchone(self) -> Optional[dict[str, Any]]: ...
+    async def fetchone(self) -> dict[str, Any] | None: ...
     async def fetchall(self) -> Sequence[dict[str, Any]]: ...
 
     def __aiter__(self) -> AsyncIterator[dict[str, Any]]: ...

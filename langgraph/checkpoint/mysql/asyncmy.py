@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import urllib.parse
 import warnings
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 from asyncmy import Connection, connect  # type: ignore
 from asyncmy.cursors import DictCursor  # type: ignore
@@ -40,7 +42,7 @@ class AsyncMySaver(BaseAsyncMySQLSaver[Connection, DictCursor]):
         cls,
         conn_string: str,
         *,
-        serde: Optional[SerializerProtocol] = None,
+        serde: SerializerProtocol | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new AsyncMySaver instance from a connection string.
 
@@ -69,7 +71,7 @@ class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
     def __init__(
         self,
         conn: Connection,
-        serde: Optional[SerializerProtocol] = None,
+        serde: SerializerProtocol | None = None,
     ) -> None:
         warnings.warn(
             "ShallowAsyncMySaver is deprecated as of version 2.0.15 and will be removed in 3.0.0. "
@@ -85,7 +87,7 @@ class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
         cls,
         conn_string: str,
         *,
-        serde: Optional[SerializerProtocol] = None,
+        serde: SerializerProtocol | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new ShallowAsyncMySaver instance from a connection string.
 

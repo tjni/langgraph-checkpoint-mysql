@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import urllib.parse
 import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Optional
+from typing import Any
 
 import pymysql
 from pymysql.cursors import DictCursor
@@ -70,7 +72,7 @@ class ShallowPyMySQLSaver(BaseShallowSyncMySQLSaver):
     def __init__(
         self,
         conn: _internal.Conn,
-        serde: Optional[SerializerProtocol] = None,
+        serde: SerializerProtocol | None = None,
     ) -> None:
         warnings.warn(
             "ShallowPyMySQLSaver is deprecated as of version 2.0.15 and will be removed in 3.0.0. "

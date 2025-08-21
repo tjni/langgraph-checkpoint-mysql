@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import deepcopy
-from typing import Any, Union
+from typing import Any
 from uuid import uuid4
 
 import pymysql
@@ -14,10 +16,11 @@ from langgraph.checkpoint.base import (
     ChannelVersions,
     Checkpoint,
     CheckpointMetadata,
+    create_checkpoint,
+    empty_checkpoint,
 )
 from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver, ShallowPyMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
-from tests.checkpoint_utils import create_checkpoint, empty_checkpoint
 from tests.conftest import (
     DEFAULT_BASE_URI,
     get_pymysql_sqlalchemy_engine,
@@ -100,7 +103,7 @@ def _shallow_saver() -> Iterator[ShallowPyMySQLSaver]:
 
 
 @contextmanager
-def _saver(name: str) -> Iterator[Union[PyMySQLSaver, ShallowPyMySQLSaver]]:
+def _saver(name: str) -> Iterator[PyMySQLSaver | ShallowPyMySQLSaver]:
     if name == "base":
         factory = _base_saver
     elif name == "shallow":
@@ -191,7 +194,6 @@ def test_combined_metadata(saver_name: str, test_data: dict[str, Any]) -> None:
         assert checkpoint
         assert checkpoint.metadata == {
             **metadata,
-            "thread_id": "thread-2",
             "run_id": "my_run_id",
         }
 

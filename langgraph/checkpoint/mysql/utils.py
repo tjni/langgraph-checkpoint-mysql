@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import base64
 import json
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 Base64Blob = str
 
@@ -59,10 +61,10 @@ def deserialize_pending_sends(value: str) -> list[tuple[str, bytes]]:
 class MySQLChannelValue(NamedTuple):
     channel: str
     type_: str
-    blob: Optional[Base64Blob]
+    blob: Base64Blob | None
 
 
-def deserialize_channel_values(value: str) -> list[tuple[str, str, Optional[bytes]]]:
+def deserialize_channel_values(value: str) -> list[tuple[str, str, bytes | None]]:
     if not value:
         return []
 
