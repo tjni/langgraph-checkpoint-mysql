@@ -1,4 +1,5 @@
 import urllib.parse
+from urllib.parse import quote_plus
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -23,7 +24,7 @@ class PyMySQLStore(BaseSyncMySQLStore[pymysql.Connection, DictCursor]):
         return {
             "host": parsed.hostname,
             "user": parsed.username,
-            "password": parsed.password or "",
+            "password": quote_plus(parsed.password or ""),
             "database": parsed.path[1:] or None,
             "port": parsed.port or 3306,
             "unix_socket": params_as_dict.get("unix_socket"),
