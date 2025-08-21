@@ -169,14 +169,12 @@ async def test_dynamic_interrupt(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "thread_id": "1",
         },
         {
             "parents": {},
             "source": "input",
             "step": -1,
-            "writes": {"__start__": {"my_key": "value ⛰️", "market": "DE"}},
             "thread_id": "1",
         },
     ]
@@ -204,7 +202,6 @@ async def test_dynamic_interrupt(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "thread_id": "1",
         },
         parent_config=(
@@ -235,7 +232,6 @@ async def test_dynamic_interrupt(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "update",
             "step": 1,
-            "writes": {},
             "thread_id": "1",
         },
         parent_config=(
@@ -362,14 +358,12 @@ async def test_dynamic_interrupt_subgraph(async_checkpointer: BaseCheckpointSave
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "thread_id": "1",
         },
         {
             "parents": {},
             "source": "input",
             "step": -1,
-            "writes": {"__start__": {"my_key": "value ⛰️", "market": "DE"}},
             "thread_id": "1",
         },
     ]
@@ -403,7 +397,6 @@ async def test_dynamic_interrupt_subgraph(async_checkpointer: BaseCheckpointSave
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "thread_id": "1",
         },
         parent_config=(
@@ -434,7 +427,6 @@ async def test_dynamic_interrupt_subgraph(async_checkpointer: BaseCheckpointSave
             "parents": {},
             "source": "update",
             "step": 1,
-            "writes": {},
             "thread_id": "1",
         },
         parent_config=(
@@ -558,14 +550,12 @@ async def test_copy_checkpoint(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "thread_id": "1",
         },
         {
             "parents": {},
             "source": "input",
             "step": -1,
-            "writes": {"__start__": {"my_key": "value ⛰️", "market": "DE"}},
             "thread_id": "1",
         },
     ]
@@ -603,7 +593,6 @@ async def test_copy_checkpoint(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "thread_id": "1",
         },
         parent_config=(
@@ -647,7 +636,6 @@ async def test_copy_checkpoint(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "fork",
             "step": 1,
-            "writes": None,
             "thread_id": "1",
         },
         parent_config=(
@@ -794,7 +782,6 @@ async def test_cancel_graph_astream(async_checkpointer: BaseCheckpointSaver) -> 
         "parents": {},
         "source": "loop",
         "step": 0,
-        "writes": None,
         "thread_id": "1",
     }
 
@@ -868,7 +855,6 @@ async def test_cancel_graph_astream_events_v2(async_checkpointer: BaseCheckpoint
         "parents": {},
         "source": "loop",
         "step": 1,
-        "writes": {"alittlewhile": {"value": 2}},
         "thread_id": "2",
     }
 
@@ -1002,7 +988,6 @@ async def test_pending_writes_resume(
         "parents": {},
         "source": "loop",
         "step": 0,
-        "writes": None,
         "thread_id": "1",
     }
     # get_state with checkpoint_id should not apply any pending writes
@@ -1093,7 +1078,6 @@ async def test_pending_writes_resume(
             "parents": {},
             "step": 1,
             "source": "loop",
-            "writes": {"one": {"value": 2}, "two": {"value": 3}},
             "thread_id": "1",
         },
         parent_config={
@@ -1144,7 +1128,6 @@ async def test_pending_writes_resume(
             "parents": {},
             "step": 0,
             "source": "loop",
-            "writes": None,
             "thread_id": "1",
         },
         parent_config={
@@ -1193,7 +1176,6 @@ async def test_pending_writes_resume(
             "parents": {},
             "step": -1,
             "source": "input",
-            "writes": {"__start__": {"value": 1}},
             "thread_id": "1",
         },
         parent_config=None,
@@ -1716,7 +1698,6 @@ async def test_send_dedupe_on_resume(
             },
             metadata={
                 "source": "loop",
-                "writes": {"3": ["3"]},
                 "thread_id": "1",
                 "step": 4,
                 "parents": {},
@@ -1753,7 +1734,6 @@ async def test_send_dedupe_on_resume(
             },
             metadata={
                 "source": "loop",
-                "writes": {"2": ["2|3"], "3": ["3"], "flaky": ["flaky|4"]},
                 "thread_id": "1",
                 "step": 3,
                 "parents": {},
@@ -1797,13 +1777,6 @@ async def test_send_dedupe_on_resume(
             },
             metadata={
                 "source": "loop",
-                "writes": {
-                    "2": [
-                        ["2|Command(goto=Send(node='2', arg=3))"],
-                        ["2|Command(goto=Send(node='flaky', arg=4))"],
-                    ],
-                    "3.1": ["3.1"],
-                },
                 "thread_id": "1",
                 "step": 2,
                 "parents": {},
@@ -1859,7 +1832,6 @@ async def test_send_dedupe_on_resume(
             },
             metadata={
                 "source": "loop",
-                "writes": {"1": ["1"]},
                 "thread_id": "1",
                 "step": 1,
                 "parents": {},
@@ -1915,7 +1887,6 @@ async def test_send_dedupe_on_resume(
             },
             metadata={
                 "source": "loop",
-                "writes": None,
                 "thread_id": "1",
                 "step": 0,
                 "parents": {},
@@ -1953,7 +1924,6 @@ async def test_send_dedupe_on_resume(
             },
             metadata={
                 "source": "input",
-                "writes": {"__start__": ["0"]},
                 "thread_id": "1",
                 "step": -1,
                 "parents": {},
@@ -2132,22 +2102,6 @@ async def test_send_react_interrupt(async_checkpointer: BaseCheckpointSaver) -> 
         metadata={
             "step": 1,
             "source": "loop",
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(
-                        content="",
-                        id="ai1",
-                        tool_calls=[
-                            {
-                                "name": "foo",
-                                "args": {"hi": [1, 2, 3]},
-                                "id": "",
-                                "type": "tool_call",
-                            }
-                        ],
-                    )
-                }
-            },
             "parents": {},
             "thread_id": "2",
         },
@@ -2200,14 +2154,6 @@ async def test_send_react_interrupt(async_checkpointer: BaseCheckpointSaver) -> 
         metadata={
             "step": 2,
             "source": "update",
-            "writes": {
-                "agent": {
-                    "messages": _AnyIdAIMessage(
-                        content="Bye now",
-                        tool_calls=[],
-                    )
-                }
-            },
             "parents": {},
             "thread_id": "2",
         },
@@ -2284,22 +2230,6 @@ async def test_send_react_interrupt(async_checkpointer: BaseCheckpointSaver) -> 
         metadata={
             "step": 1,
             "source": "loop",
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(
-                        content="",
-                        id="ai1",
-                        tool_calls=[
-                            {
-                                "name": "foo",
-                                "args": {"hi": [1, 2, 3]},
-                                "id": "",
-                                "type": "tool_call",
-                            }
-                        ],
-                    )
-                }
-            },
             "parents": {},
             "thread_id": "3",
         },
@@ -2373,21 +2303,6 @@ async def test_send_react_interrupt(async_checkpointer: BaseCheckpointSaver) -> 
         metadata={
             "step": 2,
             "source": "update",
-            "writes": {
-                "agent": {
-                    "messages": _AnyIdAIMessage(
-                        content="",
-                        tool_calls=[
-                            {
-                                "name": "foo",
-                                "args": {"hi": [4, 5, 6]},
-                                "id": "tool1",
-                                "type": "tool_call",
-                            }
-                        ],
-                    )
-                }
-            },
             "parents": {},
             "thread_id": "3",
         },
@@ -2582,22 +2497,6 @@ async def test_send_react_interrupt_control(
         metadata={
             "step": 1,
             "source": "loop",
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(
-                        content="",
-                        id="ai1",
-                        tool_calls=[
-                            {
-                                "name": "foo",
-                                "args": {"hi": [1, 2, 3]},
-                                "id": "",
-                                "type": "tool_call",
-                            }
-                        ],
-                    )
-                }
-            },
             "parents": {},
             "thread_id": "2",
         },
@@ -2650,14 +2549,6 @@ async def test_send_react_interrupt_control(
         metadata={
             "step": 2,
             "source": "update",
-            "writes": {
-                "agent": {
-                    "messages": _AnyIdAIMessage(
-                        content="Bye now",
-                        tool_calls=[],
-                    )
-                }
-            },
             "parents": {},
             "thread_id": "2",
         },
@@ -3414,7 +3305,6 @@ async def test_in_one_fan_out_state_graph_waiting_edge_custom_state_class(
         metadata={
             "parents": {},
             "source": "loop",
-            "writes": {"qa": {"answer": "doc1,doc2,doc3,doc4"}},
             "step": 4,
             "thread_id": "1",
         },
@@ -4747,11 +4637,6 @@ async def test_parent_command(async_checkpointer: BaseCheckpointSaver) -> None:
         },
         metadata={
             "source": "loop",
-            "writes": {
-                "alice": {
-                    "user_name": "Meow",
-                }
-            },
             "thread_id": "1",
             "step": 1,
             "parents": {},
@@ -6278,11 +6163,6 @@ async def test_bulk_state_updates(async_checkpointer: BaseCheckpointSaver) -> No
         c async for c in async_checkpointer.alist({"configurable": {"thread_id": "1"}})
     ]
     assert len(checkpoints) == 2
-    assert checkpoints[0].metadata["writes"] == {
-        "node_a": {"foo": "updated"},
-        "node_b": {"baz": "new"},
-    }
-    assert checkpoints[1].metadata["writes"] == {"node_a": {"foo": "bar"}}
 
     # perform multiple steps at the same time
     config = {"configurable": {"thread_id": "2"}}
@@ -6307,11 +6187,6 @@ async def test_bulk_state_updates(async_checkpointer: BaseCheckpointSaver) -> No
         c async for c in async_checkpointer.alist({"configurable": {"thread_id": "1"}})
     ]
     assert len(checkpoints) == 2
-    assert checkpoints[0].metadata["writes"] == {
-        "node_a": {"foo": "updated"},
-        "node_b": {"baz": "new"},
-    }
-    assert checkpoints[1].metadata["writes"] == {"node_a": {"foo": "bar"}}
 
     # Should raise error if updating without as_node
     with pytest.raises(InvalidUpdateError):

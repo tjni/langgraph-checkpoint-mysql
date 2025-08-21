@@ -115,7 +115,6 @@ async def test_invoke_two_processes_in_out_interrupt(
                 "parents": {},
                 "source": "loop",
                 "step": 6,
-                "writes": {"two": 5},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -139,7 +138,6 @@ async def test_invoke_two_processes_in_out_interrupt(
                 "parents": {},
                 "source": "loop",
                 "step": 5,
-                "writes": {"one": None},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -163,7 +161,6 @@ async def test_invoke_two_processes_in_out_interrupt(
                 "parents": {},
                 "source": "input",
                 "step": 4,
-                "writes": {"input": 3},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -185,7 +182,6 @@ async def test_invoke_two_processes_in_out_interrupt(
                 "parents": {},
                 "source": "loop",
                 "step": 3,
-                "writes": {"one": None},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -209,7 +205,6 @@ async def test_invoke_two_processes_in_out_interrupt(
                 "parents": {},
                 "source": "input",
                 "step": 2,
-                "writes": {"input": 20},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -231,7 +226,6 @@ async def test_invoke_two_processes_in_out_interrupt(
                 "parents": {},
                 "source": "loop",
                 "step": 1,
-                "writes": {"two": 4},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -255,7 +249,6 @@ async def test_invoke_two_processes_in_out_interrupt(
                 "parents": {},
                 "source": "loop",
                 "step": 0,
-                "writes": {"one": None},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -279,7 +272,6 @@ async def test_invoke_two_processes_in_out_interrupt(
                 "parents": {},
                 "source": "input",
                 "step": -1,
-                "writes": {"input": 2},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -354,7 +346,6 @@ async def test_fork_always_re_runs_nodes(
                 "parents": {},
                 "source": "loop",
                 "step": 5,
-                "writes": {"add_one": 1},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -376,7 +367,6 @@ async def test_fork_always_re_runs_nodes(
                 "parents": {},
                 "source": "loop",
                 "step": 4,
-                "writes": {"add_one": 1},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -398,7 +388,6 @@ async def test_fork_always_re_runs_nodes(
                 "parents": {},
                 "source": "loop",
                 "step": 3,
-                "writes": {"add_one": 1},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -420,7 +409,6 @@ async def test_fork_always_re_runs_nodes(
                 "parents": {},
                 "source": "loop",
                 "step": 2,
-                "writes": {"add_one": 1},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -442,7 +430,6 @@ async def test_fork_always_re_runs_nodes(
                 "parents": {},
                 "source": "loop",
                 "step": 1,
-                "writes": {"add_one": 1},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -464,7 +451,6 @@ async def test_fork_always_re_runs_nodes(
                 "parents": {},
                 "source": "loop",
                 "step": 0,
-                "writes": None,
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -488,7 +474,6 @@ async def test_fork_always_re_runs_nodes(
                 "parents": {},
                 "source": "input",
                 "step": -1,
-                "writes": {"__start__": 1},
                 "thread_id": "1",
             },
             created_at=AnyStr(),
@@ -762,15 +747,6 @@ async def test_conditional_graph_state(
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {
-                "agent": {
-                    "agent_outcome": AgentAction(
-                        tool="search_api",
-                        tool_input="query",
-                        log="tool:search_api:query",
-                    ),
-                }
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -815,15 +791,6 @@ async def test_conditional_graph_state(
             "parents": {},
             "source": "update",
             "step": 2,
-            "writes": {
-                "agent": {
-                    "agent_outcome": AgentAction(
-                        tool="search_api",
-                        tool_input="query",
-                        log="tool:search_api:a different query",
-                    )
-                }
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -902,14 +869,6 @@ async def test_conditional_graph_state(
             "parents": {},
             "source": "update",
             "step": 5,
-            "writes": {
-                "agent": {
-                    "agent_outcome": AgentFinish(
-                        return_values={"answer": "a really nice answer"},
-                        log="finish:a really nice answer",
-                    )
-                }
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -968,15 +927,6 @@ async def test_conditional_graph_state(
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {
-                "agent": {
-                    "agent_outcome": AgentAction(
-                        tool="search_api",
-                        tool_input="query",
-                        log="tool:search_api:query",
-                    ),
-                }
-            },
             "thread_id": "2",
         },
         parent_config=(
@@ -1021,15 +971,6 @@ async def test_conditional_graph_state(
             "parents": {},
             "source": "update",
             "step": 2,
-            "writes": {
-                "agent": {
-                    "agent_outcome": AgentAction(
-                        tool="search_api",
-                        tool_input="query",
-                        log="tool:search_api:a different query",
-                    )
-                }
-            },
             "thread_id": "2",
         },
         parent_config=(
@@ -1108,14 +1049,6 @@ async def test_conditional_graph_state(
             "parents": {},
             "source": "update",
             "step": 5,
-            "writes": {
-                "agent": {
-                    "agent_outcome": AgentFinish(
-                        return_values={"answer": "a really nice answer"},
-                        log="finish:a really nice answer",
-                    )
-                }
-            },
             "thread_id": "2",
         },
         parent_config=(
@@ -1408,22 +1341,6 @@ async def test_state_graph_packets(async_checkpointer: BaseCheckpointSaver) -> N
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(
-                        content="",
-                        id="ai1",
-                        tool_calls=[
-                            {
-                                "name": "search_api",
-                                "args": {"query": "query"},
-                                "id": "tool_call123",
-                                "type": "tool_call",
-                            }
-                        ],
-                    )
-                }
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -1466,21 +1383,6 @@ async def test_state_graph_packets(async_checkpointer: BaseCheckpointSaver) -> N
             "parents": {},
             "source": "update",
             "step": 2,
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(
-                        id="ai1",
-                        content="",
-                        tool_calls=[
-                            {
-                                "id": "tool_call123",
-                                "name": "search_api",
-                                "args": {"query": "a different query"},
-                            },
-                        ],
-                    )
-                }
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -1574,26 +1476,6 @@ async def test_state_graph_packets(async_checkpointer: BaseCheckpointSaver) -> N
             "parents": {},
             "source": "loop",
             "step": 4,
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(
-                        id="ai2",
-                        content="",
-                        tool_calls=[
-                            {
-                                "id": "tool_call234",
-                                "name": "search_api",
-                                "args": {"query": "another", "idx": 0},
-                            },
-                            {
-                                "id": "tool_call567",
-                                "name": "search_api",
-                                "args": {"query": "a third one", "idx": 1},
-                            },
-                        ],
-                    ),
-                },
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -1642,11 +1524,6 @@ async def test_state_graph_packets(async_checkpointer: BaseCheckpointSaver) -> N
             "parents": {},
             "source": "update",
             "step": 5,
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(content="answer", id="ai2"),
-                }
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -1715,24 +1592,6 @@ async def test_state_graph_packets(async_checkpointer: BaseCheckpointSaver) -> N
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(
-                        content="",
-                        additional_kwargs={},
-                        response_metadata={},
-                        id="ai1",
-                        tool_calls=[
-                            {
-                                "name": "search_api",
-                                "args": {"query": "query"},
-                                "id": "tool_call123",
-                                "type": "tool_call",
-                            }
-                        ],
-                    )
-                }
-            },
             "thread_id": "2",
         },
         parent_config=(
@@ -1775,21 +1634,6 @@ async def test_state_graph_packets(async_checkpointer: BaseCheckpointSaver) -> N
             "parents": {},
             "source": "update",
             "step": 2,
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(
-                        id="ai1",
-                        content="",
-                        tool_calls=[
-                            {
-                                "id": "tool_call123",
-                                "name": "search_api",
-                                "args": {"query": "a different query"},
-                            },
-                        ],
-                    )
-                }
-            },
             "thread_id": "2",
         },
         parent_config=(
@@ -1883,26 +1727,6 @@ async def test_state_graph_packets(async_checkpointer: BaseCheckpointSaver) -> N
             "parents": {},
             "source": "loop",
             "step": 4,
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(
-                        id="ai2",
-                        content="",
-                        tool_calls=[
-                            {
-                                "id": "tool_call234",
-                                "name": "search_api",
-                                "args": {"query": "another", "idx": 0},
-                            },
-                            {
-                                "id": "tool_call567",
-                                "name": "search_api",
-                                "args": {"query": "a third one", "idx": 1},
-                            },
-                        ],
-                    ),
-                },
-            },
             "thread_id": "2",
         },
         parent_config=(
@@ -1951,11 +1775,6 @@ async def test_state_graph_packets(async_checkpointer: BaseCheckpointSaver) -> N
             "parents": {},
             "source": "update",
             "step": 5,
-            "writes": {
-                "agent": {
-                    "messages": AIMessage(content="answer", id="ai2"),
-                }
-            },
             "thread_id": "2",
         },
         parent_config=(
@@ -2205,19 +2024,6 @@ async def test_message_graph(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {
-                "agent": AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "id": "tool_call123",
-                            "name": "search_api",
-                            "args": {"query": "query"},
-                        }
-                    ],
-                    id="ai1",
-                )
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -2258,19 +2064,6 @@ async def test_message_graph(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "update",
             "step": 2,
-            "writes": {
-                "agent": AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "id": "tool_call123",
-                            "name": "search_api",
-                            "args": {"query": "a different query"},
-                        }
-                    ],
-                    id="ai1",
-                )
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -2347,19 +2140,6 @@ async def test_message_graph(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 4,
-            "writes": {
-                "agent": AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "id": "tool_call456",
-                            "name": "search_api",
-                            "args": {"query": "another"},
-                        }
-                    ],
-                    id="ai2",
-                )
-            },
             "thread_id": "1",
         },
         parent_config=(
@@ -2406,7 +2186,6 @@ async def test_message_graph(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "update",
             "step": 5,
-            "writes": {"agent": AIMessage(content="answer", id="ai2")},
             "thread_id": "1",
         },
         parent_config=(
@@ -2467,7 +2246,6 @@ async def test_start_branch_then(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "assistant_id": "a",
             "thread_id": "1",
         },
@@ -2475,7 +2253,6 @@ async def test_start_branch_then(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "input",
             "step": -1,
-            "writes": {"__start__": {"my_key": "value", "market": "DE"}},
             "assistant_id": "a",
             "thread_id": "1",
         },
@@ -2497,7 +2274,6 @@ async def test_start_branch_then(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "assistant_id": "a",
             "thread_id": "1",
         },
@@ -2529,7 +2305,6 @@ async def test_start_branch_then(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {"tool_two_slow": {"my_key": " slow"}},
             "assistant_id": "a",
             "thread_id": "1",
         },
@@ -2563,7 +2338,6 @@ async def test_start_branch_then(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "assistant_id": "a",
             "thread_id": "2",
         },
@@ -2595,7 +2369,6 @@ async def test_start_branch_then(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {"tool_two_fast": {"my_key": " fast"}},
             "assistant_id": "a",
             "thread_id": "2",
         },
@@ -2629,7 +2402,6 @@ async def test_start_branch_then(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "loop",
             "step": 0,
-            "writes": None,
             "assistant_id": "b",
             "thread_id": "3",
         },
@@ -2658,7 +2430,6 @@ async def test_start_branch_then(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "update",
             "step": 1,
-            "writes": {START: {"my_key": "key"}},
             "assistant_id": "b",
             "thread_id": "3",
         },
@@ -2690,7 +2461,6 @@ async def test_start_branch_then(async_checkpointer: BaseCheckpointSaver) -> Non
             "parents": {},
             "source": "loop",
             "step": 2,
-            "writes": {"tool_two_fast": {"my_key": " fast"}},
             "assistant_id": "b",
             "thread_id": "3",
         },
@@ -2761,7 +2531,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
                     "parents": {},
                     "source": "input",
                     "step": -1,
-                    "writes": {"__start__": {"my_key": "value", "market": "DE"}},
                     "thread_id": "10",
                 },
                 "parent_config": None,
@@ -2800,7 +2569,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
                     "parents": {},
                     "source": "loop",
                     "step": 0,
-                    "writes": None,
                     "thread_id": "10",
                 },
                 "parent_config": {
@@ -2872,7 +2640,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
                     "parents": {},
                     "source": "loop",
                     "step": 1,
-                    "writes": {"prepare": {"my_key": " prepared"}},
                     "thread_id": "10",
                 },
                 "parent_config": {
@@ -2944,7 +2711,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
                     "parents": {},
                     "source": "loop",
                     "step": 2,
-                    "writes": {"tool_two_slow": {"my_key": " slow"}},
                     "thread_id": "10",
                 },
                 "parent_config": {
@@ -3019,7 +2785,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
                     "parents": {},
                     "source": "loop",
                     "step": 3,
-                    "writes": {"finish": {"my_key": " finished"}},
                     "thread_id": "10",
                 },
                 "parent_config": {
@@ -3077,7 +2842,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
                     "parents": {},
                     "source": "input",
                     "step": -1,
-                    "writes": {"__start__": {"my_key": "value", "market": "DE"}},
                     "thread_id": "11",
                 },
                 "parent_config": None,
@@ -3116,7 +2880,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
                     "parents": {},
                     "source": "loop",
                     "step": 0,
-                    "writes": None,
                     "thread_id": "11",
                 },
                 "parent_config": {
@@ -3188,7 +2951,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
                     "parents": {},
                     "source": "loop",
                     "step": 1,
-                    "writes": {"prepare": {"my_key": " prepared"}},
                     "thread_id": "11",
                 },
                 "parent_config": {
@@ -3230,7 +2992,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {"prepare": {"my_key": " prepared"}},
             "thread_id": "11",
         },
         parent_config=(
@@ -3261,7 +3022,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 3,
-            "writes": {"finish": {"my_key": " finished"}},
             "thread_id": "11",
         },
         parent_config=(
@@ -3294,7 +3054,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {"prepare": {"my_key": " prepared"}},
             "thread_id": "12",
         },
         parent_config=(
@@ -3325,7 +3084,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 3,
-            "writes": {"finish": {"my_key": " finished"}},
             "thread_id": "12",
         },
         parent_config=(
@@ -3366,7 +3124,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {"prepare": {"my_key": " prepared"}},
             "thread_id": "21",
         },
         parent_config=(
@@ -3397,7 +3154,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 3,
-            "writes": {"finish": {"my_key": " finished"}},
             "thread_id": "21",
         },
         parent_config=(
@@ -3430,7 +3186,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {"prepare": {"my_key": " prepared"}},
             "thread_id": "22",
         },
         parent_config=(
@@ -3461,7 +3216,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 3,
-            "writes": {"finish": {"my_key": " finished"}},
             "thread_id": "22",
         },
         parent_config=(
@@ -3488,7 +3242,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "update",
             "step": 0,
-            "writes": {START: {"my_key": "key", "market": "DE"}},
             "thread_id": "23",
         },
         parent_config=None,
@@ -3516,7 +3269,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 1,
-            "writes": {"prepare": {"my_key": " prepared"}},
             "thread_id": "23",
         },
         parent_config=uconfig,
@@ -3543,7 +3295,6 @@ async def test_branch_then(async_checkpointer: BaseCheckpointSaver) -> None:
             "parents": {},
             "source": "loop",
             "step": 3,
-            "writes": {"finish": {"my_key": " finished"}},
             "thread_id": "23",
         },
         parent_config=(
@@ -3630,7 +3381,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
         metadata={
             "parents": {},
             "source": "loop",
-            "writes": {"outer_1": {"my_key": "hi my value"}},
             "step": 1,
             "thread_id": "1",
         },
@@ -3680,12 +3430,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
                             "": AnyStr(),
                         },
                         "source": "loop",
-                        "writes": {
-                            "inner_1": {
-                                "my_key": "hi my value here",
-                                "my_other_key": "hi my value",
-                            }
-                        },
                         "step": 1,
                         "thread_id": "1",
                         "langgraph_node": "inner",
@@ -3720,7 +3464,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
         metadata={
             "parents": {},
             "source": "loop",
-            "writes": {"outer_1": {"my_key": "hi my value"}},
             "step": 1,
             "thread_id": "1",
         },
@@ -3763,7 +3506,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             metadata={
                 "parents": {},
                 "source": "loop",
-                "writes": {"outer_1": {"my_key": "hi my value"}},
                 "step": 1,
                 "thread_id": "1",
             },
@@ -3798,7 +3540,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             metadata={
                 "parents": {},
                 "source": "loop",
-                "writes": None,
                 "step": 0,
                 "thread_id": "1",
             },
@@ -3833,7 +3574,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             metadata={
                 "parents": {},
                 "source": "input",
-                "writes": {"__start__": {"my_key": "my value"}},
                 "step": -1,
                 "thread_id": "1",
             },
@@ -3865,12 +3605,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             },
             metadata={
                 "source": "loop",
-                "writes": {
-                    "inner_1": {
-                        "my_key": "hi my value here",
-                        "my_other_key": "hi my value",
-                    }
-                },
                 "step": 1,
                 "parents": {"": AnyStr()},
                 "thread_id": "1",
@@ -3909,7 +3643,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             },
             metadata={
                 "source": "loop",
-                "writes": None,
                 "step": 0,
                 "parents": {"": AnyStr()},
                 "thread_id": "1",
@@ -3958,7 +3691,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             },
             metadata={
                 "source": "input",
-                "writes": {"__start__": {"my_key": "hi my value"}},
                 "step": -1,
                 "parents": {"": AnyStr()},
                 "thread_id": "1",
@@ -4001,9 +3733,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
         metadata={
             "parents": {},
             "source": "loop",
-            "writes": {
-                "outer_2": {"my_key": "hi my value here and there and back again"}
-            },
             "step": 3,
             "thread_id": "1",
         },
@@ -4034,11 +3763,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             metadata={
                 "parents": {},
                 "source": "loop",
-                "writes": {
-                    "outer_2": {
-                        "my_key": "hi my value here and there and back again"
-                    }
-                },
                 "step": 3,
                 "thread_id": "1",
             },
@@ -4073,7 +3797,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             metadata={
                 "parents": {},
                 "source": "loop",
-                "writes": {"inner": {"my_key": "hi my value here and there"}},
                 "step": 2,
                 "thread_id": "1",
             },
@@ -4114,7 +3837,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             metadata={
                 "parents": {},
                 "source": "loop",
-                "writes": {"outer_1": {"my_key": "hi my value"}},
                 "step": 1,
                 "thread_id": "1",
             },
@@ -4149,7 +3871,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             metadata={
                 "parents": {},
                 "source": "loop",
-                "writes": None,
                 "step": 0,
                 "thread_id": "1",
             },
@@ -4184,7 +3905,6 @@ async def test_nested_graph_state(async_checkpointer: BaseCheckpointSaver) -> No
             metadata={
                 "parents": {},
                 "source": "input",
-                "writes": {"__start__": {"my_key": "my value"}},
                 "step": -1,
                 "thread_id": "1",
             },
@@ -4290,7 +4010,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
         metadata={
             "parents": {},
             "source": "loop",
-            "writes": {"parent_1": {"my_key": "hi my value"}},
             "step": 1,
             "thread_id": "1",
         },
@@ -4342,7 +4061,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
             "langgraph_triggers": ["branch:to:child"],
             "parents": {"": AnyStr()},
             "source": "loop",
-            "writes": None,
             "step": 0,
             "thread_id": "1",
         },
@@ -4395,7 +4113,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
                 }
             ),
             "source": "loop",
-            "writes": {"grandchild_1": {"my_key": "hi my value here"}},
             "step": 1,
             "thread_id": "1",
             "langgraph_checkpoint_ns": AnyStr("child:"),
@@ -4472,11 +4189,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
                                         }
                                     ),
                                     "source": "loop",
-                                    "writes": {
-                                        "grandchild_1": {
-                                            "my_key": "hi my value here"
-                                        }
-                                    },
                                     "step": 1,
                                     "thread_id": "1",
                                     "langgraph_checkpoint_ns": AnyStr("child:"),
@@ -4527,7 +4239,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
                     metadata={
                         "parents": {"": AnyStr()},
                         "source": "loop",
-                        "writes": None,
                         "step": 0,
                         "thread_id": "1",
                         "langgraph_node": "child",
@@ -4564,7 +4275,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
         metadata={
             "parents": {},
             "source": "loop",
-            "writes": {"parent_1": {"my_key": "hi my value"}},
             "step": 1,
             "thread_id": "1",
         },
@@ -4609,11 +4319,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
             metadata={
                 "parents": {},
                 "source": "loop",
-                "writes": {
-                    "parent_2": {
-                        "my_key": "hi my value here and there and back again"
-                    }
-                },
                 "step": 3,
                 "thread_id": "1",
             },
@@ -4648,11 +4353,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
                 metadata={
                     "parents": {},
                     "source": "loop",
-                    "writes": {
-                        "parent_2": {
-                            "my_key": "hi my value here and there and back again"
-                        }
-                    },
                     "step": 3,
                     "thread_id": "1",
                 },
@@ -4679,7 +4379,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
                 metadata={
                     "parents": {},
                     "source": "loop",
-                    "writes": {"child": {"my_key": "hi my value here and there"}},
                     "step": 2,
                     "thread_id": "1",
                 },
@@ -4724,7 +4423,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
                 metadata={
                     "parents": {},
                     "source": "loop",
-                    "writes": {"parent_1": {"my_key": "hi my value"}},
                     "step": 1,
                     "thread_id": "1",
                 },
@@ -4751,7 +4449,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
                 metadata={
                     "parents": {},
                     "source": "loop",
-                    "writes": None,
                     "step": 0,
                     "thread_id": "1",
                 },
@@ -4783,7 +4480,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
                 metadata={
                     "parents": {},
                     "source": "input",
-                    "writes": {"my_key": "my value"},
                     "step": -1,
                     "thread_id": "1",
                 },
@@ -4818,7 +4514,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
             },
             metadata={
                 "source": "loop",
-                "writes": {"child_1": {"my_key": "hi my value here and there"}},
                 "step": 1,
                 "parents": {"": AnyStr()},
                 "thread_id": "1",
@@ -4857,7 +4552,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
             },
             metadata={
                 "source": "loop",
-                "writes": None,
                 "step": 0,
                 "parents": {"": AnyStr()},
                 "thread_id": "1",
@@ -4909,7 +4603,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
             },
             metadata={
                 "source": "input",
-                "writes": {"__start__": {"my_key": "hi my value"}},
                 "step": -1,
                 "parents": {"": AnyStr()},
                 "thread_id": "1",
@@ -4956,9 +4649,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
             },
             metadata={
                 "source": "loop",
-                "writes": {
-                    "grandchild_2": {"my_key": "hi my value here and there"}
-                },
                 "step": 2,
                 "parents": AnyDict(
                     {
@@ -5015,7 +4705,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
             },
             metadata={
                 "source": "loop",
-                "writes": {"grandchild_1": {"my_key": "hi my value here"}},
                 "step": 1,
                 "parents": AnyDict(
                     {
@@ -5079,7 +4768,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
             },
             metadata={
                 "source": "loop",
-                "writes": None,
                 "step": 0,
                 "parents": AnyDict(
                     {
@@ -5143,7 +4831,6 @@ async def test_doubly_nested_graph_state(async_checkpointer: BaseCheckpointSaver
             },
             metadata={
                 "source": "input",
-                "writes": {"__start__": {"my_key": "hi my value"}},
                 "step": -1,
                 "parents": AnyDict(
                     {
@@ -5421,7 +5108,6 @@ async def test_weather_subgraph(
         },
         metadata={
             "source": "loop",
-            "writes": {"router_node": {"route": "weather"}},
             "step": 1,
             "parents": {},
             "thread_id": "1",
@@ -5514,7 +5200,6 @@ async def test_weather_subgraph(
         },
         metadata={
             "source": "loop",
-            "writes": {"router_node": {"route": "weather"}},
             "step": 1,
             "parents": {},
             "thread_id": "14",
@@ -5555,7 +5240,6 @@ async def test_weather_subgraph(
                     },
                     metadata={
                         "source": "loop",
-                        "writes": {"model_node": {"city": "San Francisco"}},
                         "step": 1,
                         "parents": {"": AnyStr()},
                         "thread_id": "14",
@@ -5613,7 +5297,6 @@ async def test_weather_subgraph(
         },
         metadata={
             "source": "loop",
-            "writes": {"router_node": {"route": "weather"}},
             "step": 1,
             "parents": {},
             "thread_id": "14",
@@ -5656,13 +5339,6 @@ async def test_weather_subgraph(
                     metadata={
                         "step": 2,
                         "source": "update",
-                        "writes": {
-                            "weather_node": {
-                                "messages": [
-                                    {"role": "assistant", "content": "rainy"}
-                                ]
-                            }
-                        },
                         "parents": {"": AnyStr()},
                         "thread_id": "14",
                         "checkpoint_id": AnyStr(),
