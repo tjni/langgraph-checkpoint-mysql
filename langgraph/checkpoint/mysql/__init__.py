@@ -1,5 +1,6 @@
 import json
 import threading
+from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, Generic, Optional
@@ -137,6 +138,39 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         with self._cursor() as cur:
             cur.execute(query, args)
             values = cur.fetchall()
+            if not values:
+                return
+            for value in values:
+                value["checkpoint"] = json.loads(value["checkpoint"])
+                value["channel_values"] = deserialize_channel_values(
+                    value["channel_values"]
+                )
+            # migrate pending sends if necessary
+            if to_migrate := [
+                v
+                for v in values
+                if v["checkpoint"]["v"] < 4 and v["parent_checkpoint_id"]
+            ]:
+                cur.execute(
+                    self._select_pending_sends_sql(len(to_migrate)),
+                    (
+                        values[0]["thread_id"],
+                        *[v["parent_checkpoint_id"] for v in to_migrate],
+                    ),
+                )
+            pending_sends = cur.fetchall()
+            grouped_by_parent = defaultdict(list)
+            for value in to_migrate:
+                grouped_by_parent[value["parent_checkpoint_id"]].append(value)
+            for sends in pending_sends:
+                for value in grouped_by_parent[sends["checkpoint_id"]]:
+                    if value["channel_values"] is None:
+                        value["channel_values"] = []
+                    self._migrate_pending_sends(
+                        deserialize_pending_sends(sends["sends"]),
+                        value["checkpoint"],
+                        value["channel_values"],
+                    )
             for value in values:
                 yield CheckpointTuple(
                     {
@@ -147,9 +181,8 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                         }
                     },
                     self._load_checkpoint(
-                        json.loads(value["checkpoint"]),
-                        deserialize_channel_values(value["channel_values"]),
-                        deserialize_pending_sends(value["pending_sends"]),
+                        value["checkpoint"],
+                        value["channel_values"],
                     ),
                     self._load_metadata(value["metadata"]),
                     (
@@ -228,37 +261,55 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                 query,
                 args,
             )
-            values = cur.fetchall()
-            for value in values:
-                return CheckpointTuple(
+            value = cur.fetchone()
+            if value is None:
+                return None
+            value["checkpoint"] = json.loads(value["checkpoint"])
+            value["channel_values"] = deserialize_channel_values(
+                value["channel_values"]
+            )
+
+            # migrate pending sends if necessary
+            if value["checkpoint"]["v"] < 4 and value["parent_checkpoint_id"]:
+                cur.execute(
+                    self._select_pending_sends_sql(1),
+                    (thread_id, value["parent_checkpoint_id"]),
+                )
+                if sends := cur.fetchone():
+                    if value["channel_values"] is None:
+                        value["channel_values"] = []
+                    self._migrate_pending_sends(
+                        deserialize_pending_sends(sends["sends"]),
+                        value["checkpoint"],
+                        value["channel_values"],
+                    )
+
+            return CheckpointTuple(
+                {
+                    "configurable": {
+                        "thread_id": thread_id,
+                        "checkpoint_ns": checkpoint_ns,
+                        "checkpoint_id": value["checkpoint_id"],
+                    }
+                },
+                self._load_checkpoint(
+                    value["checkpoint"],
+                    value["channel_values"],
+                ),
+                self._load_metadata(value["metadata"]),
+                (
                     {
                         "configurable": {
                             "thread_id": thread_id,
                             "checkpoint_ns": checkpoint_ns,
-                            "checkpoint_id": value["checkpoint_id"],
+                            "checkpoint_id": value["parent_checkpoint_id"],
                         }
-                    },
-                    self._load_checkpoint(
-                        json.loads(value["checkpoint"]),
-                        deserialize_channel_values(value["channel_values"]),
-                        deserialize_pending_sends(value["pending_sends"]),
-                    ),
-                    self._load_metadata(value["metadata"]),
-                    (
-                        {
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "checkpoint_ns": checkpoint_ns,
-                                "checkpoint_id": value["parent_checkpoint_id"],
-                            }
-                        }
-                        if value["parent_checkpoint_id"]
-                        else None
-                    ),
-                    self._load_writes(
-                        deserialize_pending_writes(value["pending_writes"])
-                    ),
-                )
+                    }
+                    if value["parent_checkpoint_id"]
+                    else None
+                ),
+                self._load_writes(deserialize_pending_writes(value["pending_writes"])),
+            )
 
     def put(
         self,

@@ -15,7 +15,7 @@ from langgraph.checkpoint.base import (
 )
 from langgraph.checkpoint.mysql.utils import mysql_mariadb_branch
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-from langgraph.checkpoint.serde.types import TASKS, ChannelProtocol
+from langgraph.checkpoint.serde.types import TASKS
 
 MetadataInput = Optional[dict[str, Any]]
 
@@ -196,22 +196,25 @@ select
         where cw.thread_id = checkpoints.thread_id
             and cw.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
             and cw.checkpoint_id = checkpoints.checkpoint_id
-    ) as pending_writes,
-    (
-        select json_arrayagg(json_array(
-            cw.task_path,
-            cw.task_id,
-            cw.type,
-            {mysql_mariadb_branch("cw.blob", "to_base64(cw.blob)")},
-            cw.idx
-        ))
-        from checkpoint_writes cw
-        where cw.thread_id = checkpoints.thread_id
-            and cw.checkpoint_ns_hash = checkpoints.checkpoint_ns_hash
-            and cw.checkpoint_id = checkpoints.parent_checkpoint_id
-            and cw.channel = '{TASKS}'
-    ) as pending_sends
+    ) as pending_writes
 from checkpoints {{WHERE}} """
+
+SELECT_PENDING_SENDS_SQL = f"""
+select
+    checkpoint_id,
+    json_arrayagg(json_array(
+        task_path,
+        task_id,
+        type,
+        {mysql_mariadb_branch("`blob`", "to_base64(`blob`)")},
+        idx
+    )) as sends
+from checkpoint_writes
+where thread_id = %s
+    and checkpoint_id in ({{CHECKPOINT_ID_PLACEHOLDERS}})
+    and channel = '{TASKS}'
+group by checkpoint_id
+"""
 
 UPSERT_CHECKPOINT_BLOBS_SQL = """
     INSERT IGNORE INTO checkpoint_blobs (thread_id, checkpoint_ns, checkpoint_ns_hash, channel, version, type, `blob`)
@@ -250,22 +253,38 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
 
     jsonplus_serde = JsonPlusSerializer()
 
+    def _migrate_pending_sends(
+        self,
+        pending_sends: list[tuple[str, bytes]],
+        checkpoint: dict[str, Any],
+        channel_values: list[tuple[str, str, Optional[bytes]]],
+    ) -> None:
+        if not pending_sends:
+            return
+        # add to values
+        enc, blob = self.serde.dumps_typed(
+            [self.serde.loads_typed((c, b)) for c, b in pending_sends],
+        )
+        channel_values.append((TASKS, enc, blob))
+        # add to versions
+        checkpoint["channel_versions"][TASKS] = (
+            max(checkpoint["channel_versions"].values())
+            if checkpoint["channel_versions"]
+            else self.get_next_version(None)
+        )
+
     def _load_checkpoint(
         self,
         checkpoint: dict[str, Any],
         channel_values: list[tuple[str, str, Optional[bytes]]],
-        pending_sends: list[tuple[str, bytes]],
     ) -> Checkpoint:
         return {
             **checkpoint,
-            "pending_sends": [
-                self.serde.loads_typed((c, b)) for c, b in pending_sends or []
-            ],
             "channel_values": self._load_blobs(channel_values),
         }
 
     def _dump_checkpoint(self, checkpoint: Checkpoint) -> dict[str, Any]:
-        return {**checkpoint, "pending_sends": []}
+        return checkpoint
 
     def _load_blobs(
         self, blob_values: list[tuple[str, str, Optional[bytes]]]
@@ -352,7 +371,7 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
         # NOTE: we're using JSON serializer (not msgpack), so we need to remove null characters before writing
         return serialized_metadata.decode().replace("\\u0000", "")
 
-    def get_next_version(self, current: Optional[str], channel: ChannelProtocol) -> str:
+    def get_next_version(self, current: Optional[str]) -> str:
         if current is None:
             current_v = 0
         elif isinstance(current, int):
@@ -410,3 +429,10 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
     @staticmethod
     def _select_sql(where: str) -> str:
         return SELECT_SQL.replace("{WHERE}", where)
+
+    @staticmethod
+    def _select_pending_sends_sql(num_ids: int) -> str:
+        placeholders = ",".join(["%s"] * num_ids)
+        return SELECT_PENDING_SENDS_SQL.replace(
+            "{CHECKPOINT_ID_PLACEHOLDERS}", placeholders
+        )

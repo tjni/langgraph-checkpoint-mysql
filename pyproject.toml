@@ -39,7 +39,7 @@ dev = [
   "asyncmy>=0.2.10",
   "types-PyMySQL>=1.1.0",
   "langgraph",
-  "langgraph-checkpoint==2.0.26",
+  "langgraph-checkpoint",
   "langgraph-checkpoint-sqlite",
   "syrupy>=4.0.2",
   "pytest-repeat>=0.9.3",
@@ -51,7 +51,7 @@ dev = [
 default-groups = ["dev"]
 
 [tool.uv.sources]
-langgraph = { git = "https://github.com/langchain-ai/langgraph", rev = "85522ec6a69d5476688debb2d072ab126752a521", subdirectory = "libs/langgraph" }
+langgraph = { git = "https://github.com/langchain-ai/langgraph", rev = "4e8fbe4525ceb752fe216a0b7d26f49df1e2e722", subdirectory = "libs/langgraph" }
 
 [tool.hatch.build.targets.wheel]
 include = ["langgraph"]

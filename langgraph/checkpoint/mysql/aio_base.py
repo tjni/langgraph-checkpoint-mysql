@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections import defaultdict
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Generic, Optional
@@ -96,7 +97,40 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         # if we change this to use .stream() we need to make sure to close the cursor
         async with self._cursor() as cur:
             await cur.execute(query, args)
-            async for value in cur:
+            values = await cur.fetchall()
+            if not values:
+                return
+            for value in values:
+                value["checkpoint"] = json.loads(value["checkpoint"])
+                value["channel_values"] = deserialize_channel_values(
+                    value["channel_values"]
+                )
+            # migrate pending sends if necessary
+            if to_migrate := [
+                v
+                for v in values
+                if v["checkpoint"]["v"] < 4 and v["parent_checkpoint_id"]
+            ]:
+                await cur.execute(
+                    self._select_pending_sends_sql(len(to_migrate)),
+                    (
+                        values[0]["thread_id"],
+                        *[v["parent_checkpoint_id"] for v in to_migrate],
+                    ),
+                )
+                grouped_by_parent = defaultdict(list)
+                for value in to_migrate:
+                    grouped_by_parent[value["parent_checkpoint_id"]].append(value)
+                async for sends in cur:
+                    for value in grouped_by_parent[sends["checkpoint_id"]]:
+                        if value["channel_values"] is None:
+                            value["channel_values"] = []
+                        self._migrate_pending_sends(
+                            deserialize_pending_sends(sends["sends"]),
+                            value["checkpoint"],
+                            value["channel_values"],
+                        )
+            for value in values:
                 yield CheckpointTuple(
                     {
                         "configurable": {
@@ -107,9 +141,8 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
                     },
                     await asyncio.to_thread(
                         self._load_checkpoint,
-                        json.loads(value["checkpoint"]),
-                        deserialize_channel_values(value["channel_values"]),
-                        deserialize_pending_sends(value["pending_sends"]),
+                        value["checkpoint"],
+                        value["channel_values"],
                     ),
                     self._load_metadata(value["metadata"]),
                     (
@@ -168,39 +201,60 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
                 query,
                 args,
             )
+            value = await cur.fetchone()
+            if value is None:
+                return None
 
-            async for value in cur:
-                return CheckpointTuple(
+            value["checkpoint"] = json.loads(value["checkpoint"])
+            value["channel_values"] = deserialize_channel_values(
+                value["channel_values"]
+            )
+
+            # migrate pending sends if necessary
+            if value["checkpoint"]["v"] < 4 and value["parent_checkpoint_id"]:
+                await cur.execute(
+                    self._select_pending_sends_sql(1),
+                    (thread_id, value["parent_checkpoint_id"]),
+                )
+                if sends := await cur.fetchone():
+                    if value["channel_values"] is None:
+                        value["channel_values"] = []
+                    self._migrate_pending_sends(
+                        deserialize_pending_sends(sends["sends"]),
+                        value["checkpoint"],
+                        value["channel_values"],
+                    )
+
+            return CheckpointTuple(
+                {
+                    "configurable": {
+                        "thread_id": thread_id,
+                        "checkpoint_ns": checkpoint_ns,
+                        "checkpoint_id": value["checkpoint_id"],
+                    }
+                },
+                await asyncio.to_thread(
+                    self._load_checkpoint,
+                    value["checkpoint"],
+                    value["channel_values"],
+                ),
+                self._load_metadata(value["metadata"]),
+                (
                     {
                         "configurable": {
                             "thread_id": thread_id,
                             "checkpoint_ns": checkpoint_ns,
-                            "checkpoint_id": value["checkpoint_id"],
+                            "checkpoint_id": value["parent_checkpoint_id"],
                         }
-                    },
-                    await asyncio.to_thread(
-                        self._load_checkpoint,
-                        json.loads(value["checkpoint"]),
-                        deserialize_channel_values(value["channel_values"]),
-                        deserialize_pending_sends(value["pending_sends"]),
-                    ),
-                    self._load_metadata(value["metadata"]),
-                    (
-                        {
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "checkpoint_ns": checkpoint_ns,
-                                "checkpoint_id": value["parent_checkpoint_id"],
-                            }
-                        }
-                        if value["parent_checkpoint_id"]
-                        else None
-                    ),
-                    await asyncio.to_thread(
-                        self._load_writes,
-                        deserialize_pending_writes(value["pending_writes"]),
-                    ),
-                )
+                    }
+                    if value["parent_checkpoint_id"]
+                    else None
+                ),
+                await asyncio.to_thread(
+                    self._load_writes,
+                    deserialize_pending_writes(value["pending_writes"]),
+                ),
+            )
 
     async def aput(
         self,

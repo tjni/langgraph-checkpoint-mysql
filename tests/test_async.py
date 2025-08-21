@@ -15,8 +15,6 @@ from langgraph.checkpoint.base import (
     ChannelVersions,
     Checkpoint,
     CheckpointMetadata,
-    create_checkpoint,
-    empty_checkpoint,
 )
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver, ShallowAIOMySQLSaver
 from langgraph.checkpoint.mysql.aio_base import BaseAsyncMySQLSaver
@@ -24,6 +22,7 @@ from langgraph.checkpoint.mysql.asyncmy import AsyncMySaver, ShallowAsyncMySaver
 from langgraph.checkpoint.mysql.shallow import BaseShallowAsyncMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
 from langgraph.graph import END, START, MessagesState, StateGraph
+from tests.checkpoint_utils import create_checkpoint, empty_checkpoint
 from tests.conftest import DEFAULT_BASE_URI
 
 pytestmark = pytest.mark.anyio
@@ -36,6 +35,8 @@ SAVERS = [
     "asyncmy_pool",
     "asyncmy_shallow",
 ]
+
+NON_SHALLOW_SAVERS = [saver for saver in SAVERS if "shallow" not in saver]
 
 
 def _exclude_keys(config: dict[str, Any]) -> dict[str, Any]:
@@ -401,7 +402,10 @@ async def test_write_and_read_pending_writes_and_sends(
             ("world", "w2", "w2v"),
         ]
 
-        assert result.checkpoint["pending_sends"] == ["w3v"]
+        if "shallow" not in saver_name:
+            assert result.checkpoint["channel_values"][TASKS] == ["w3v"]
+        else:
+            assert result.checkpoint.get("pending_sends") == ["w3v"]
 
 
 @pytest.mark.parametrize("saver_name", SAVERS)
@@ -535,3 +539,54 @@ async def test_graph_sync_get_state_history_raises(saver_name: str) -> None:
         # this method should not hang
         with pytest.raises(asyncio.exceptions.InvalidStateError):
             next(graph.get_state_history(config))
+
+
+@pytest.mark.parametrize("saver_name", NON_SHALLOW_SAVERS)
+async def test_pending_sends_migration(saver_name: str) -> None:
+    async with _saver(saver_name) as saver:
+        config: RunnableConfig = {
+            "configurable": {
+                "thread_id": "thread-1",
+                "checkpoint_ns": "",
+            }
+        }
+
+        # create the first checkpoint
+        # and put some pending sends
+        checkpoint_0 = empty_checkpoint()
+        config = await saver.aput(config, checkpoint_0, {}, {})
+        await saver.aput_writes(
+            config, [(TASKS, "send-1"), (TASKS, "send-2")], task_id="task-1"
+        )
+        await saver.aput_writes(config, [(TASKS, "send-3")], task_id="task-2")
+
+        # check that fetching checkpoint_0 doesn't attach pending sends
+        # (they should be attached to the next checkpoint)
+        tuple_0 = await saver.aget_tuple(config)
+        assert tuple_0
+        assert tuple_0.checkpoint["channel_values"] == {}
+        assert tuple_0.checkpoint["channel_versions"] == {}
+
+        # create the second checkpoint
+        checkpoint_1 = create_checkpoint(checkpoint_0, {}, 1)
+        config = await saver.aput(config, checkpoint_1, {}, {})
+
+        # check that pending sends are attached to checkpoint_1
+        tuple_1 = await saver.aget_tuple(config)
+        assert tuple_1
+        assert tuple_1.checkpoint["channel_values"] == {
+            TASKS: ["send-1", "send-2", "send-3"]
+        }
+        assert TASKS in tuple_1.checkpoint["channel_versions"]
+
+        # check that list also applies the migration
+        search_results = [
+            c async for c in saver.alist({"configurable": {"thread_id": "thread-1"}})
+        ]
+        assert len(search_results) == 2
+        assert search_results[-1].checkpoint["channel_values"] == {}
+        assert search_results[-1].checkpoint["channel_versions"] == {}
+        assert search_results[0].checkpoint["channel_values"] == {
+            TASKS: ["send-1", "send-2", "send-3"]
+        }
+        assert TASKS in search_results[0].checkpoint["channel_versions"]

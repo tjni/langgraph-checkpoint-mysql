@@ -5965,8 +5965,10 @@ def test_send_dedupe_on_resume(
     if checkpoint_during:
         assert history == expected_history
     else:
-        assert history[0] == expected_history[0]
-        assert history[1] == expected_history[2]
+        assert history[0] == expected_history[0]._replace(
+            parent_config=history[1].config
+        )
+        assert history[1] == expected_history[2]._replace(parent_config=None)
 
 
 def test_nested_graph_state(
