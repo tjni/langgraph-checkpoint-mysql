@@ -307,11 +307,18 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
             cur.execute(self.SELECT_SQL + where, args)
             values = cur.fetchall()
             for value in values:
-                checkpoint = self._load_checkpoint(
-                    json.loads(value["checkpoint"]),
-                    deserialize_channel_values(value["channel_values"]),
-                    deserialize_pending_sends(value["pending_sends"]),
-                )
+                pending_sends = deserialize_pending_sends(value["pending_sends"])
+                checkpoint: Checkpoint = {
+                    **json.loads(value["checkpoint"]),
+                    "channel_values": self._load_blobs(
+                        deserialize_channel_values(value["channel_values"])
+                    ),
+                    "pending_sends": [
+                        self.serde.loads_typed((c, b)) for c, b in pending_sends
+                    ]
+                    if pending_sends
+                    else [],
+                }
                 yield CheckpointTuple(
                     config={
                         "configurable": {
@@ -372,11 +379,18 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
             )
             values = cur.fetchall()
             for value in values:
-                checkpoint = self._load_checkpoint(
-                    json.loads(value["checkpoint"]),
-                    deserialize_channel_values(value["channel_values"]),
-                    deserialize_pending_sends(value["pending_sends"]),
-                )
+                pending_sends = deserialize_pending_sends(value["pending_sends"])
+                checkpoint: Checkpoint = {
+                    **json.loads(value["checkpoint"]),
+                    "channel_values": self._load_blobs(
+                        deserialize_channel_values(value["channel_values"])
+                    ),
+                    "pending_sends": [
+                        self.serde.loads_typed((c, b)) for c, b in pending_sends
+                    ]
+                    if pending_sends
+                    else [],
+                }
                 return CheckpointTuple(
                     config={
                         "configurable": {
@@ -603,12 +617,18 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         async with self._cursor() as cur:
             await cur.execute(self.SELECT_SQL + where, args)
             async for value in cur:
-                checkpoint = await asyncio.to_thread(
-                    self._load_checkpoint,
-                    json.loads(value["checkpoint"]),
-                    deserialize_channel_values(value["channel_values"]),
-                    deserialize_pending_sends(value["pending_sends"]),
-                )
+                pending_sends = deserialize_pending_sends(value["pending_sends"])
+                checkpoint: Checkpoint = {
+                    **json.loads(value["checkpoint"]),
+                    "channel_values": self._load_blobs(
+                        deserialize_channel_values(value["channel_values"])
+                    ),
+                    "pending_sends": [
+                        self.serde.loads_typed((c, b)) for c, b in pending_sends
+                    ]
+                    if pending_sends
+                    else [],
+                }
                 yield CheckpointTuple(
                     config={
                         "configurable": {
@@ -646,12 +666,18 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
             )
 
             async for value in cur:
-                checkpoint = await asyncio.to_thread(
-                    self._load_checkpoint,
-                    json.loads(value["checkpoint"]),
-                    deserialize_channel_values(value["channel_values"]),
-                    deserialize_pending_sends(value["pending_sends"]),
-                )
+                pending_sends = deserialize_pending_sends(value["pending_sends"])
+                checkpoint: Checkpoint = {
+                    **json.loads(value["checkpoint"]),
+                    "channel_values": self._load_blobs(
+                        deserialize_channel_values(value["channel_values"])
+                    ),
+                    "pending_sends": [
+                        self.serde.loads_typed((c, b)) for c, b in pending_sends
+                    ]
+                    if pending_sends
+                    else [],
+                }
                 return CheckpointTuple(
                     config={
                         "configurable": {
