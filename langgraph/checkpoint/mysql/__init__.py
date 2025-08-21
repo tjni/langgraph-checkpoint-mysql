@@ -180,10 +180,10 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                             "checkpoint_id": value["checkpoint_id"],
                         }
                     },
-                    self._load_checkpoint(
-                        value["checkpoint"],
-                        value["channel_values"],
-                    ),
+                    {
+                        **value["checkpoint"],
+                        "channel_values": self._load_blobs(value["channel_values"]),
+                    },
                     self._load_metadata(value["metadata"]),
                     (
                         {
@@ -292,10 +292,10 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                         "checkpoint_id": value["checkpoint_id"],
                     }
                 },
-                self._load_checkpoint(
-                    value["checkpoint"],
-                    value["channel_values"],
-                ),
+                {
+                    **value["checkpoint"],
+                    "channel_values": self._load_blobs(value["channel_values"]),
+                },
                 self._load_metadata(value["metadata"]),
                 (
                     {
@@ -376,7 +376,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                     checkpoint_ns,
                     checkpoint["id"],
                     checkpoint_id,
-                    json.dumps(self._dump_checkpoint(copy)),
+                    json.dumps(copy),
                     self._dump_metadata(get_checkpoint_metadata(config, metadata)),
                 ),
             )

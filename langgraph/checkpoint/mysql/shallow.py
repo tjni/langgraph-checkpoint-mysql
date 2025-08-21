@@ -478,7 +478,7 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
                     thread_id,
                     checkpoint_ns,
                     checkpoint_ns,
-                    json.dumps(self._dump_checkpoint(copy)),
+                    json.dumps(copy),
                     self._dump_metadata(get_checkpoint_metadata(config, metadata)),
                 ),
             )
@@ -753,7 +753,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
                     thread_id,
                     checkpoint_ns,
                     checkpoint_ns,
-                    json.dumps(self._dump_checkpoint(copy)),
+                    json.dumps(copy),
                     self._dump_metadata(get_checkpoint_metadata(config, metadata)),
                 ),
             )

@@ -137,7 +137,6 @@ def test_no_prompt(
     assert saved.metadata == {
         "parents": {},
         "source": "loop",
-        "writes": {"agent": {"messages": [AIMessage(content="hi?", id="0")]}},
         "step": 1,
         "thread_id": "123",
     }
@@ -165,7 +164,6 @@ async def test_no_prompt_async(async_checkpointer: BaseCheckpointSaver) -> None:
     assert saved.metadata == {
         "parents": {},
         "source": "loop",
-        "writes": {"agent": {"messages": [AIMessage(content="hi?", id="0")]}},
         "step": 1,
         "thread_id": "123",
     }
