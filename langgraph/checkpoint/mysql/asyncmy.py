@@ -75,7 +75,7 @@ class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
     ) -> None:
         warnings.warn(
             "ShallowAsyncMySaver is deprecated as of version 2.0.15 and will be removed in 3.0.0. "
-            "Use AsyncMysqlSaver instead, and invoke the graph with `await graph.ainvoke(..., checkpoint_during=False)`.",
+            "Use AsyncMysqlSaver instead, and invoke the graph with `await graph.ainvoke(..., durability='exit')`.",
             DeprecationWarning,
             stacklevel=2,
         )

@@ -10,6 +10,7 @@ from langgraph.cache.memory import InMemoryCache
 from langgraph.cache.sqlite import SqliteCache
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.store.base import BaseStore
+from langgraph.types import Durability
 from tests.conftest_checkpointer import (
     _checkpointer_aiomysql,
     _checkpointer_aiomysql_pool,
@@ -48,8 +49,8 @@ def deterministic_uuids(mocker: MockerFixture) -> MockerFixture:
     return mocker.patch("uuid.uuid4", side_effect=side_effect)
 
 
-@pytest.fixture(params=[True, False])
-def checkpoint_during(request: pytest.FixtureRequest) -> bool:
+@pytest.fixture(params=["sync", "async", "exit"])
+def durability(request: pytest.FixtureRequest) -> Durability:
     return request.param
 
 

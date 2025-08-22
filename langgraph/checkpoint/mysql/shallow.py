@@ -821,7 +821,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         while True:
             try:
                 yield asyncio.run_coroutine_threadsafe(
-                    anext(aiter_),  # noqa: F821
+                    anext(aiter_),  # type: ignore # noqa: F821
                     self.loop,
                 ).result()
             except StopAsyncIteration:

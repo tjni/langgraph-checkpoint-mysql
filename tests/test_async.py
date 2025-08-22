@@ -528,14 +528,15 @@ async def test_graph_sync_get_state_history_raises(saver_name: str) -> None:
     """Regression test for https://github.com/langchain-ai/langgraph/issues/2992"""
 
     builder = StateGraph(MessagesState)
-    builder.add_node("foo", lambda _: None)
+    builder.add_node("foo", lambda state: None)
     builder.add_edge(START, "foo")
     builder.add_edge("foo", END)
 
     async with _saver(saver_name) as saver:
         graph = builder.compile(checkpointer=saver)
         config: RunnableConfig = {"configurable": {"thread_id": "1"}}
-        await graph.ainvoke({"messages": []}, config)
+        input: MessagesState = {"messages": []}
+        await graph.ainvoke(input, config)
 
         # this method should not hang
         with pytest.raises(asyncio.exceptions.InvalidStateError):

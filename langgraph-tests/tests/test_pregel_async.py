@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from pytest_mock import MockerFixture
 from typing_extensions import TypedDict
 
+from langgraph._internal._constants import CONFIG_KEY_NODE_FINISHED, ERROR, PULL
 from langgraph.cache.base import BaseCache
 from langgraph.channels.binop import BinaryOperatorAggregate
 from langgraph.channels.last_value import LastValue
@@ -31,21 +32,22 @@ from langgraph.checkpoint.base import (
     BaseCheckpointSaver,
     CheckpointTuple,
 )
-from langgraph.constants import CONFIG_KEY_NODE_FINISHED, ERROR, PULL, START
-from langgraph.errors import InvalidUpdateError, NodeInterrupt, ParentCommand
+from langgraph.errors import InvalidUpdateError, ParentCommand
 from langgraph.func import entrypoint, task
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import MessagesState, add_messages
 from langgraph.prebuilt.tool_node import ToolNode
-from langgraph.pregel import NodeBuilder, Pregel, StateSnapshot
-from langgraph.pregel.retry import RetryPolicy
+from langgraph.pregel import NodeBuilder, Pregel
 from langgraph.store.base import BaseStore
 from langgraph.types import (
     CachePolicy,
     Command,
+    Durability,
     Interrupt,
     PregelTask,
+    RetryPolicy,
     Send,
+    StateSnapshot,
     StateUpdate,
     StreamWriter,
     interrupt,
@@ -97,7 +99,7 @@ async def test_dynamic_interrupt(async_checkpointer: BaseCheckpointSaver) -> Non
         "my_key": "value",
         "market": "DE",
         "__interrupt__": [
-            Interrupt(value="Just because...", resumable=True, ns=[AnyStr("tool_two:")])
+            Interrupt(value="Just because...", id=AnyStr())
         ],
     }
     assert tool_two_node_count == 1, "interrupts aren't retried"
@@ -129,8 +131,7 @@ async def test_dynamic_interrupt(async_checkpointer: BaseCheckpointSaver) -> Non
             "__interrupt__": (
                 Interrupt(
                     value="Just because...",
-                    resumable=True,
-                    ns=[AnyStr("tool_two:")],
+                    id=AnyStr(),
                 ),
             )
         },
@@ -148,15 +149,14 @@ async def test_dynamic_interrupt(async_checkpointer: BaseCheckpointSaver) -> Non
     assert [
         c
         async for c in tool_two.astream(
-            {"my_key": "value ⛰️", "market": "DE"}, thread1, checkpoint_during=False
+            {"my_key": "value ⛰️", "market": "DE"}, thread1, durability="exit"
         )
     ] == [
         {
             "__interrupt__": (
                 Interrupt(
                     value="Just because...",
-                    resumable=True,
-                    ns=[AnyStr("tool_two:")],
+                    id=AnyStr(),
                 ),
             )
         },
@@ -180,8 +180,7 @@ async def test_dynamic_interrupt(async_checkpointer: BaseCheckpointSaver) -> Non
                 interrupts=(
                     Interrupt(
                         value="Just because...",
-                        resumable=True,
-                        ns=[AnyStr("tool_two:")],
+                        id=AnyStr(),
                     ),
                 ),
             ),
@@ -197,8 +196,7 @@ async def test_dynamic_interrupt(async_checkpointer: BaseCheckpointSaver) -> Non
         interrupts=(
             Interrupt(
                 value="Just because...",
-                resumable=True,
-                ns=[AnyStr("tool_two:")],
+                id=AnyStr(),
             ),
         ),
     )
@@ -263,13 +261,7 @@ async def test_dynamic_interrupt_subgraph(
     ) == {
         "my_key": "value",
         "market": "DE",
-        "__interrupt__": [
-            Interrupt(
-                value="Just because...",
-                resumable=True,
-                ns=[AnyStr("tool_two:"), AnyStr("do:")],
-            )
-        ],
+        "__interrupt__": [Interrupt(value="Just because...", id=AnyStr())],
     }
     assert tool_two_node_count == 1, "interrupts aren't retried"
     assert len(tracer.runs) == 1
@@ -300,8 +292,7 @@ async def test_dynamic_interrupt_subgraph(
             "__interrupt__": (
                 Interrupt(
                     value="Just because...",
-                    resumable=True,
-                    ns=[AnyStr("tool_two:"), AnyStr("do:")],
+                    id=AnyStr(),
                 ),
             )
         },
@@ -320,15 +311,14 @@ async def test_dynamic_interrupt_subgraph(
     assert [
         c
         async for c in tool_two.astream(
-            {"my_key": "value ⛰️", "market": "DE"}, thread1, checkpoint_during=False
+            {"my_key": "value ⛰️", "market": "DE"}, thread1, durability="exit"
         )
     ] == [
         {
             "__interrupt__": (
                 Interrupt(
                     value="Just because...",
-                    resumable=True,
-                    ns=[AnyStr("tool_two:"), AnyStr("do:")],
+                    id=AnyStr(),
                 ),
             )
         },
@@ -352,8 +342,7 @@ async def test_dynamic_interrupt_subgraph(
                 interrupts=(
                     Interrupt(
                         value="Just because...",
-                        resumable=True,
-                        ns=[AnyStr("tool_two:"), AnyStr("do:")],
+                        id=AnyStr(),
                     ),
                 ),
                 state={
@@ -375,8 +364,7 @@ async def test_dynamic_interrupt_subgraph(
         interrupts=(
             Interrupt(
                 value="Just because...",
-                resumable=True,
-                ns=[AnyStr("tool_two:"), AnyStr("do:")],
+                id=AnyStr(),
             ),
         ),
     )
@@ -443,7 +431,7 @@ async def test_partial_pending_checkpoint(
         "my_key": "value one",
         "market": "DE",
         "__interrupt__": [
-            Interrupt(value="Just because...", resumable=True, ns=[AnyStr("tool_two:")])
+            Interrupt(value="Just because...", id=AnyStr())
         ],
     }
     assert tool_two_node_count == 1, "interrupts aren't retried"
@@ -475,8 +463,7 @@ async def test_partial_pending_checkpoint(
             "__interrupt__": (
                 Interrupt(
                     value="Just because...",
-                    resumable=True,
-                    ns=[AnyStr("tool_two:")],
+                    id=AnyStr(),
                 ),
             )
         },
@@ -499,15 +486,14 @@ async def test_partial_pending_checkpoint(
     thread1 = {"configurable": {"thread_id": "1"}}
     # stop when about to enter node
     assert await tool_two.ainvoke(
-        {"my_key": "value ⛰️", "market": "DE"}, thread1, checkpoint_during=False
+        {"my_key": "value ⛰️", "market": "DE"}, thread1, durability="exit"
     ) == {
         "my_key": "value ⛰️ one",
         "market": "DE",
         "__interrupt__": [
             Interrupt(
                 value="Just because...",
-                resumable=True,
-                ns=[AnyStr("tool_two:")],
+                id=AnyStr(),
             )
         ],
     }
@@ -541,8 +527,7 @@ async def test_partial_pending_checkpoint(
                 interrupts=(
                     Interrupt(
                         value="Just because...",
-                        resumable=True,
-                        ns=[AnyStr("tool_two:")],
+                        id=AnyStr(),
                     ),
                 ),
             ),
@@ -558,8 +543,7 @@ async def test_partial_pending_checkpoint(
         interrupts=(
             Interrupt(
                 value="Just because...",
-                resumable=True,
-                ns=[AnyStr("tool_two:")],
+                id=AnyStr(),
             ),
         ),
     )
@@ -623,8 +607,7 @@ async def test_node_not_cancelled_on_other_node_interrupted(
         "__interrupt__": [
             Interrupt(
                 value="I am bad",
-                resumable=True,
-                ns=[AnyStr("bad:")],
+                id=AnyStr(),
             )
         ],
     }
@@ -637,8 +620,7 @@ async def test_node_not_cancelled_on_other_node_interrupted(
         "__interrupt__": [
             Interrupt(
                 value="I am bad",
-                resumable=True,
-                ns=[AnyStr("bad:")],
+                id=AnyStr(),
             )
         ],
     }
@@ -861,7 +843,7 @@ async def test_invoke_checkpoint(mocker: MockerFixture, async_checkpointer: Base
 
 
 async def test_pending_writes_resume(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     class State(TypedDict):
         value: Annotated[int, operator.add]
@@ -899,7 +881,7 @@ async def test_pending_writes_resume(
     thread1: RunnableConfig = {"configurable": {"thread_id": "1"}}
     with pytest.raises(ConnectionError, match="I'm not good"):
         await graph.ainvoke(
-            {"value": 1}, thread1, checkpoint_during=checkpoint_during
+            {"value": 1}, thread1, durability=durability
         )
 
     # both nodes should have been called once
@@ -949,7 +931,7 @@ async def test_pending_writes_resume(
 
     # resume execution
     with pytest.raises(ConnectionError, match="I'm not good"):
-        await graph.ainvoke(None, thread1, checkpoint_during=checkpoint_during)
+        await graph.ainvoke(None, thread1, durability=durability)
 
     # node "one" succeeded previously, so shouldn't be called again
     assert one.calls == 1
@@ -964,13 +946,13 @@ async def test_pending_writes_resume(
     two.rtn = {"value": 3}
     # both the pending write and the new write were applied, 1 + 2 + 3 = 6
     assert await graph.ainvoke(
-        None, thread1, checkpoint_during=checkpoint_during
+        None, thread1, durability=durability
     ) == {"value": 6}
 
     # check all final checkpoints
     checkpoints = [c async for c in async_checkpointer.alist(thread1)]
     # we should have 3
-    assert len(checkpoints) == (3 if checkpoint_during else 2)
+    assert len(checkpoints) == (3 if durability != "exit" else 2)
     # the last one not too interesting for this test
     assert checkpoints[0] == CheckpointTuple(
         config={
@@ -1009,6 +991,7 @@ async def test_pending_writes_resume(
                 "branch:to:two": AnyVersion(),
             },
             "channel_values": {"value": 6},
+            "updated_channels": ["value"],
         },
         metadata={
             "parents": {},
@@ -1058,6 +1041,7 @@ async def test_pending_writes_resume(
                 "branch:to:one": None,
                 "branch:to:two": None,
             },
+            "updated_channels": ["branch:to:one", "branch:to:two", "value"],
         },
         metadata={
             "parents": {},
@@ -1071,14 +1055,14 @@ async def test_pending_writes_resume(
                 "checkpoint_id": checkpoints[2].config["configurable"]["checkpoint_id"],
             }
         }
-        if checkpoint_during
+        if durability != "exit"
         else None,
         pending_writes=UnsortedSequence(
             (AnyStr(), "value", 2),
             (AnyStr(), "__error__", 'ConnectionError("I\'m not good")'),
             (AnyStr(), "value", 3),
         )
-        if checkpoint_during
+        if durability != "exit"
         else UnsortedSequence(
             (AnyStr(), "value", 2),
             (AnyStr(), "__error__", 'ConnectionError("I\'m not good")'),
@@ -1086,7 +1070,7 @@ async def test_pending_writes_resume(
             # produced in a run where only the next checkpoint (the last) is saved
         ),
     )
-    if not checkpoint_during:
+    if durability == "exit":
         return
     assert checkpoints[2] == CheckpointTuple(
         config={
@@ -1105,6 +1089,7 @@ async def test_pending_writes_resume(
                 "__start__": AnyVersion(),
             },
             "channel_values": {"__start__": {"value": 1}},
+            "updated_channels": ["__start__"],
         },
         metadata={
             "parents": {},
@@ -1160,7 +1145,7 @@ async def test_run_from_checkpoint_id_retains_previous_writes(
     thread_id = uuid.uuid4()
     thread1 = {"configurable": {"thread_id": str(thread_id)}}
 
-    result = await graph.ainvoke({"myval": 1}, thread1, checkpoint_during=True)
+    result = await graph.ainvoke({"myval": 1}, thread1, durability="async")
     assert result["myval"] == 4
     history = [c async for c in graph.aget_state_history(thread1)]
 
@@ -1265,7 +1250,7 @@ async def test_send_sequences(async_checkpointer: BaseCheckpointSaver) -> None:
 
 
 @NEEDS_CONTEXTVARS
-async def test_imp_task(async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool) -> None:
+async def test_imp_task(async_checkpointer: BaseCheckpointSaver, durability: Durability) -> None:
     mapper_calls = 0
 
     @task()
@@ -1287,7 +1272,7 @@ async def test_imp_task(async_checkpointer: BaseCheckpointSaver, checkpoint_duri
     assert [
         c
         async for c in graph.astream(
-            [0, 1], thread1, checkpoint_during=checkpoint_during
+            [0, 1], thread1, durability=durability
         )
     ] == [
         {"mapper": "00"},
@@ -1296,9 +1281,7 @@ async def test_imp_task(async_checkpointer: BaseCheckpointSaver, checkpoint_duri
             "__interrupt__": (
                 Interrupt(
                     value="question",
-                    resumable=True,
-                    ns=[AnyStr("graph:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         },
@@ -1314,7 +1297,7 @@ async def test_imp_task(async_checkpointer: BaseCheckpointSaver, checkpoint_duri
     assert any(r.inputs == {"input": 1} for r in mapper_runs)
 
     assert await graph.ainvoke(
-        Command(resume="answer"), thread1, checkpoint_during=checkpoint_during
+        Command(resume="answer"), thread1, durability=durability
     ) == [
         "00answer",
         "11answer",
@@ -1323,7 +1306,7 @@ async def test_imp_task(async_checkpointer: BaseCheckpointSaver, checkpoint_duri
 
 
 @NEEDS_CONTEXTVARS
-async def test_imp_nested(async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool) -> None:
+async def test_imp_nested(async_checkpointer: BaseCheckpointSaver, durability: Durability) -> None:
     async def mynode(input: list[str]) -> list[str]:
         return [it + "a" for it in input]
 
@@ -1364,7 +1347,7 @@ async def test_imp_nested(async_checkpointer: BaseCheckpointSaver, checkpoint_du
     assert [
         c
         async for c in graph.astream(
-            [0, 1], thread1, checkpoint_during=checkpoint_during
+            [0, 1], thread1, durability=durability
         )
     ] == [
         {"submapper": "0"},
@@ -1375,16 +1358,14 @@ async def test_imp_nested(async_checkpointer: BaseCheckpointSaver, checkpoint_du
             "__interrupt__": (
                 Interrupt(
                     value="question",
-                    resumable=True,
-                    ns=[AnyStr("graph:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         },
     ]
 
     assert await graph.ainvoke(
-        Command(resume="answer"), thread1, checkpoint_during=checkpoint_during
+        Command(resume="answer"), thread1, durability=durability
     ) == [
         "00answera",
         "11answera",
@@ -1392,7 +1373,7 @@ async def test_imp_nested(async_checkpointer: BaseCheckpointSaver, checkpoint_du
 
 
 @NEEDS_CONTEXTVARS
-async def test_imp_task_cancel(async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool) -> None:
+async def test_imp_task_cancel(async_checkpointer: BaseCheckpointSaver, durability: Durability) -> None:
     mapper_calls = 0
     mapper_cancels = 0
 
@@ -1420,7 +1401,7 @@ async def test_imp_task_cancel(async_checkpointer: BaseCheckpointSaver, checkpoi
     assert [
         c
         async for c in graph.astream(
-            [0, 1], thread1, checkpoint_during=checkpoint_during
+            [0, 1], thread1, durability=durability
         )
     ] == [
         {"mapper": "00"},
@@ -1428,9 +1409,7 @@ async def test_imp_task_cancel(async_checkpointer: BaseCheckpointSaver, checkpoi
             "__interrupt__": (
                 Interrupt(
                     value="question",
-                    resumable=True,
-                    ns=[AnyStr("graph:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         },
@@ -1439,7 +1418,7 @@ async def test_imp_task_cancel(async_checkpointer: BaseCheckpointSaver, checkpoi
     assert mapper_cancels == 1
 
     assert await graph.ainvoke(
-        Command(resume="answer"), thread1, checkpoint_during=checkpoint_during
+        Command(resume="answer"), thread1, durability=durability
     ) == [
         "00answer",
     ]
@@ -1449,7 +1428,7 @@ async def test_imp_task_cancel(async_checkpointer: BaseCheckpointSaver, checkpoi
 
 @NEEDS_CONTEXTVARS
 async def test_imp_sync_from_async(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     @task()
     def foo(state: dict) -> dict:
@@ -1474,7 +1453,7 @@ async def test_imp_sync_from_async(
     assert [
         c
         async for c in graph.astream(
-            {"a": "0"}, thread1, checkpoint_during=checkpoint_during
+            {"a": "0"}, thread1, durability=durability
         )
     ] == [
         {"foo": {"a": "0foo", "b": "bar"}},
@@ -1486,7 +1465,7 @@ async def test_imp_sync_from_async(
 
 @NEEDS_CONTEXTVARS
 async def test_imp_stream_order(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     @task()
     async def foo(state: dict) -> dict:
@@ -1512,7 +1491,7 @@ async def test_imp_stream_order(
     assert [
         c
         async for c in graph.astream(
-            {"a": "0"}, thread1, checkpoint_during=checkpoint_during
+            {"a": "0"}, thread1, durability=durability
         )
     ] == [
         {"foo": {"a": "0foo", "b": "bar"}},
@@ -1522,8 +1501,12 @@ async def test_imp_stream_order(
     ]
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="Requires Python 3.11 or higher for context management",
+)
 async def test_send_dedupe_on_resume(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     class InterruptOnce:
         ticks: int = 0
@@ -1531,7 +1514,7 @@ async def test_send_dedupe_on_resume(
         def __call__(self, state):
             self.ticks += 1
             if self.ticks == 1:
-                raise NodeInterrupt("Bahh")
+                raise interrupt("Bahh")
             return ["|".join(("flaky", str(state)))]
 
     class Node:
@@ -1575,13 +1558,12 @@ async def test_send_dedupe_on_resume(
     graph = builder.compile(checkpointer=async_checkpointer)
     thread1 = {"configurable": {"thread_id": "1"}}
     assert await graph.ainvoke(
-        ["0"], thread1, checkpoint_during=checkpoint_during
+        ["0"], thread1, durability=durability
     ) == {
         "__interrupt__": [
             Interrupt(
                 value="Bahh",
-                resumable=False,
-                ns=None,
+                id=AnyStr(),
             ),
         ],
     }
@@ -1589,7 +1571,7 @@ async def test_send_dedupe_on_resume(
     assert builder.nodes["flaky"].runnable.func.ticks == 1
     # resume execution
     assert await graph.ainvoke(
-        None, thread1, checkpoint_during=checkpoint_during
+        None, thread1, durability=durability
     ) == [
         "0",
         "1",
@@ -1607,7 +1589,7 @@ async def test_send_dedupe_on_resume(
     assert builder.nodes["flaky"].runnable.func.ticks == 2
     # check history
     history = [c async for c in graph.aget_state_history(thread1)]
-    assert len(history) == (6 if checkpoint_during else 2)
+    assert len(history) == (6 if durability != "exit" else 2)
     expected_history = [
         StateSnapshot(
             values=[
@@ -1734,9 +1716,9 @@ async def test_send_dedupe_on_resume(
                     name="flaky",
                     path=("__pregel_push", 1, False),
                     error=None,
-                    interrupts=(Interrupt(value="Bahh", resumable=False, ns=None),),
+                    interrupts=(Interrupt(value="Bahh", id=AnyStr()),),
                     state=None,
-                    result=["flaky|4"] if checkpoint_during else None,
+                    result=["flaky|4"] if durability != "exit" else None,
                 ),
                 PregelTask(
                     id=AnyStr(),
@@ -1748,7 +1730,7 @@ async def test_send_dedupe_on_resume(
                     result=["3"],
                 ),
             ),
-            interrupts=(Interrupt(value="Bahh", resumable=False, ns=None),),
+            interrupts=(Interrupt(value="Bahh", id=AnyStr()),),
         ),
         StateSnapshot(
             values=["0", "1"],
@@ -1871,7 +1853,7 @@ async def test_send_dedupe_on_resume(
             interrupts=(),
         ),
     ]
-    if checkpoint_during:
+    if durability != "exit":
         assert history == expected_history
     else:
         assert history[0] == expected_history[0]._replace(
@@ -1982,7 +1964,7 @@ async def test_send_react_interrupt(async_checkpointer: BaseCheckpointSaver) -> 
     graph = builder.compile(checkpointer=async_checkpointer, interrupt_before=["foo"])
     thread1 = {"configurable": {"thread_id": "2"}}
     assert await graph.ainvoke(
-        {"messages": [HumanMessage("hello")]}, thread1, checkpoint_during=False
+        {"messages": [HumanMessage("hello")]}, thread1, durability="exit"
     ) == {
         "messages": [
             _AnyIdHumanMessage(content="hello"),
@@ -2106,7 +2088,7 @@ async def test_send_react_interrupt(async_checkpointer: BaseCheckpointSaver) -> 
     graph = builder.compile(checkpointer=async_checkpointer, interrupt_before=["foo"])
     thread1 = {"configurable": {"thread_id": "3"}}
     assert await graph.ainvoke(
-        {"messages": [HumanMessage("hello")]}, thread1, checkpoint_during=False
+        {"messages": [HumanMessage("hello")]}, thread1, durability="exit"
     ) == {
         "messages": [
             _AnyIdHumanMessage(content="hello"),
@@ -2369,7 +2351,7 @@ async def test_send_react_interrupt_control(
     graph = builder.compile(checkpointer=async_checkpointer, interrupt_before=["foo"])
     thread1 = {"configurable": {"thread_id": "2"}}
     assert await graph.ainvoke(
-        {"messages": [HumanMessage("hello")]}, thread1, checkpoint_during=False
+        {"messages": [HumanMessage("hello")]}, thread1, durability="exit"
     ) == {
         "messages": [
             _AnyIdHumanMessage(content="hello"),
@@ -2632,7 +2614,7 @@ async def test_invoke_checkpoint_three(
 
     thread_1 = {"configurable": {"thread_id": "1"}}
     # total starts out as 0, so output is 0+2=2
-    assert await app.ainvoke(2, thread_1, checkpoint_during=True) == 2
+    assert await app.ainvoke(2, thread_1, durability="async") == 2
     state = await app.aget_state(thread_1)
     assert state is not None
     assert state.values.get("total") == 2
@@ -2641,7 +2623,7 @@ async def test_invoke_checkpoint_three(
         == (await async_checkpointer.aget(thread_1))["id"]
     )
     # total is now 2, so output is 2+3=5
-    assert await app.ainvoke(3, thread_1, checkpoint_during=True) == 5
+    assert await app.ainvoke(3, thread_1, durability="async") == 5
     state = await app.aget_state(thread_1)
     assert state is not None
     assert state.values.get("total") == 7
@@ -2651,7 +2633,7 @@ async def test_invoke_checkpoint_three(
     )
     # total is now 2+5=7, so output would be 7+4=11, but raises ValueError
     with pytest.raises(ValueError):
-        await app.ainvoke(4, thread_1, checkpoint_during=True)
+        await app.ainvoke(4, thread_1, durability="async")
     # checkpoint is not updated
     state = await app.aget_state(thread_1)
     assert state is not None
@@ -2659,7 +2641,7 @@ async def test_invoke_checkpoint_three(
     assert state.next == ("one",)
     """we checkpoint inputs and it failed on "one", so the next node is one"""
     # we can recover from error by sending new inputs
-    assert await app.ainvoke(2, thread_1, checkpoint_during=True) == 9
+    assert await app.ainvoke(2, thread_1, durability="async") == 9
     state = await app.aget_state(thread_1)
     assert state is not None
     assert state.values.get("total") == 16, "total is now 7+9=16"
@@ -3371,7 +3353,7 @@ async def test_in_one_fan_out_state_graph_waiting_edge_plus_regular(
 
 
 async def test_subgraph_checkpoint_true(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     class InnerState(TypedDict):
         my_key: Annotated[str, operator.add]
@@ -3409,7 +3391,7 @@ async def test_subgraph_checkpoint_true(
             {"my_key": ""},
             config,
             subgraphs=True,
-            checkpoint_during=checkpoint_during,
+            durability=durability,
         )
     ] == [
         (("inner",), {"inner_1": {"my_key": " got here", "my_other_key": ""}}),
@@ -3438,7 +3420,7 @@ async def test_subgraph_checkpoint_true(
 
 @NEEDS_CONTEXTVARS
 async def test_subgraph_checkpoint_true_interrupt(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     # Define subgraph
     class SubgraphState(TypedDict):
@@ -3480,14 +3462,13 @@ async def test_subgraph_checkpoint_true_interrupt(
     config = {"configurable": {"thread_id": "1"}}
 
     assert await graph.ainvoke(
-        {"foo": "foo"}, config, checkpoint_during=checkpoint_during
+        {"foo": "foo"}, config, durability=durability
     ) == {
         "foo": "hi! foo",
         "__interrupt__": [
             Interrupt(
                 value="Provide baz value",
-                resumable=True,
-                ns=[AnyStr("node_2"), AnyStr("subgraph_node_1:")],
+                id=AnyStr(),
             )
         ],
     }
@@ -3495,7 +3476,7 @@ async def test_subgraph_checkpoint_true_interrupt(
         0
     ].state.values == {"bar": "hi! foo"}
     assert await graph.ainvoke(
-        Command(resume="baz"), config, checkpoint_during=checkpoint_during
+        Command(resume="baz"), config, durability=durability
     ) == {"foo": "hi! foobaz"}
 
 
@@ -3605,7 +3586,7 @@ async def test_stream_buffering_single_node(async_checkpointer: BaseCheckpointSa
 
 
 async def test_nested_graph_interrupts_parallel(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     class InnerState(TypedDict):
         my_key: Annotated[str, operator.add]
@@ -3655,12 +3636,12 @@ async def test_nested_graph_interrupts_parallel(
     # test invoke w/ nested interrupt
     config = {"configurable": {"thread_id": "1"}}
     assert await app.ainvoke(
-        {"my_key": ""}, config, checkpoint_during=checkpoint_during
+        {"my_key": ""}, config, durability=durability
     ) == {
         "my_key": " and parallel",
     }
 
-    assert await app.ainvoke(None, config, checkpoint_during=checkpoint_during) == {
+    assert await app.ainvoke(None, config, durability=durability) == {
         "my_key": "got here and there and parallel and back again",
     }
 
@@ -3675,7 +3656,7 @@ async def test_nested_graph_interrupts_parallel(
             {"my_key": ""},
             config,
             subgraphs=True,
-            checkpoint_during=checkpoint_during,
+            durability=durability,
         )
     ] == [
         # we got to parallel node first
@@ -3689,7 +3670,7 @@ async def test_nested_graph_interrupts_parallel(
     assert [
         c
         async for c in app.astream(
-            None, config, checkpoint_during=checkpoint_during
+            None, config, durability=durability
         )
     ] == [
         {"outer_1": {"my_key": " and parallel"}, "__metadata__": {"cached": True}},
@@ -3705,7 +3686,7 @@ async def test_nested_graph_interrupts_parallel(
             {"my_key": ""},
             config,
             stream_mode="values",
-            checkpoint_during=checkpoint_during,
+            durability=durability,
         )
     ] == [
         {"my_key": ""},
@@ -3714,7 +3695,7 @@ async def test_nested_graph_interrupts_parallel(
     assert [
         c
         async for c in app.astream(
-            None, config, stream_mode="values", checkpoint_during=checkpoint_during
+            None, config, stream_mode="values", durability=durability
         )
     ] == [
         {"my_key": ""},
@@ -3731,7 +3712,7 @@ async def test_nested_graph_interrupts_parallel(
             {"my_key": ""},
             config,
             stream_mode="values",
-            checkpoint_during=checkpoint_during,
+            durability=durability,
         )
     ] == [
         {"my_key": ""},
@@ -3740,7 +3721,7 @@ async def test_nested_graph_interrupts_parallel(
     assert [
         c
         async for c in app.astream(
-            None, config, stream_mode="values", checkpoint_during=checkpoint_during
+            None, config, stream_mode="values", durability=durability
         )
     ] == [
         {"my_key": ""},
@@ -3749,7 +3730,7 @@ async def test_nested_graph_interrupts_parallel(
     assert [
         c
         async for c in app.astream(
-            None, config, stream_mode="values", checkpoint_during=checkpoint_during
+            None, config, stream_mode="values", durability=durability
         )
     ] == [
         {"my_key": ""},
@@ -3766,7 +3747,7 @@ async def test_nested_graph_interrupts_parallel(
             {"my_key": ""},
             config,
             stream_mode="values",
-            checkpoint_during=checkpoint_during,
+            durability=durability,
         )
     ] == [
         {"my_key": ""},
@@ -3775,7 +3756,7 @@ async def test_nested_graph_interrupts_parallel(
     assert [
         c
         async for c in app.astream(
-            None, config, stream_mode="values", checkpoint_during=checkpoint_during
+            None, config, stream_mode="values", durability=durability
         )
     ] == [
         {"my_key": ""},
@@ -3784,7 +3765,7 @@ async def test_nested_graph_interrupts_parallel(
     assert [
         c
         async for c in app.astream(
-            None, config, stream_mode="values", checkpoint_during=checkpoint_during
+            None, config, stream_mode="values", durability=durability
         )
     ] == [
         {"my_key": "got here and there and parallel"},
@@ -3793,7 +3774,7 @@ async def test_nested_graph_interrupts_parallel(
 
 
 async def test_doubly_nested_graph_interrupts(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     class State(TypedDict):
         my_key: str
@@ -3847,12 +3828,12 @@ async def test_doubly_nested_graph_interrupts(
     # test invoke w/ nested interrupt
     config = {"configurable": {"thread_id": "1"}}
     assert await app.ainvoke(
-        {"my_key": "my value"}, config, checkpoint_during=checkpoint_during
+        {"my_key": "my value"}, config, durability=durability
     ) == {
         "my_key": "hi my value",
     }
 
-    assert await app.ainvoke(None, config, checkpoint_during=checkpoint_during) == {
+    assert await app.ainvoke(None, config, durability=durability) == {
         "my_key": "hi my value here and there and back again",
     }
 
@@ -3864,7 +3845,7 @@ async def test_doubly_nested_graph_interrupts(
     assert [
         c
         async for c in app.astream(
-            {"my_key": "my value"}, config, checkpoint_during=checkpoint_during
+            {"my_key": "my value"}, config, durability=durability
         )
     ] == [
         {"parent_1": {"my_key": "hi my value"}},
@@ -3874,7 +3855,7 @@ async def test_doubly_nested_graph_interrupts(
     assert [
         c
         async for c in app.astream(
-            None, config, checkpoint_during=checkpoint_during
+            None, config, durability=durability
         )
     ] == [
         {"child": {"my_key": "hi my value here and there"}},
@@ -3897,7 +3878,7 @@ async def test_doubly_nested_graph_interrupts(
             {"my_key": "my value"},
             config,
             stream_mode="values",
-            checkpoint_during=checkpoint_during,
+            durability=durability,
         )
     ] == [
         {"my_key": "my value"},
@@ -3906,7 +3887,7 @@ async def test_doubly_nested_graph_interrupts(
     assert [
         c
         async for c in app.astream(
-            None, config, stream_mode="values", checkpoint_during=checkpoint_during
+            None, config, stream_mode="values", durability=durability
         )
     ] == [
         {"my_key": "hi my value"},
@@ -4181,7 +4162,7 @@ async def test_debug_retry(async_checkpointer: BaseCheckpointSaver):
     graph = builder.compile(checkpointer=async_checkpointer)
 
     config = {"configurable": {"thread_id": "1"}}
-    await graph.ainvoke({"messages": []}, config=config, checkpoint_during=True)
+    await graph.ainvoke({"messages": []}, config=config, durability="async")
 
     # re-run step: 1
     async for c in async_checkpointer.alist(config):
@@ -4195,7 +4176,7 @@ async def test_debug_retry(async_checkpointer: BaseCheckpointSaver):
     events = [
         c
         async for c in graph.astream(
-            None, config=update_config, stream_mode="debug", checkpoint_during=True
+            None, config=update_config, stream_mode="debug", durability="async"
         )
     ]
 
@@ -4228,7 +4209,7 @@ async def test_debug_retry(async_checkpointer: BaseCheckpointSaver):
 
 
 async def test_debug_subgraphs(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ):
     class State(TypedDict):
         messages: Annotated[list[str], operator.add]
@@ -4263,14 +4244,14 @@ async def test_debug_subgraphs(
             {"messages": []},
             config=config,
             stream_mode="debug",
-            checkpoint_during=checkpoint_during,
+            durability=durability,
         )
     ]
 
     checkpoint_events = list(
         reversed([e["payload"] for e in events if e["type"] == "checkpoint"])
     )
-    if not checkpoint_during:
+    if durability == "exit":
         checkpoint_events = checkpoint_events[:1]
     checkpoint_history = [c async for c in graph.aget_state_history(config)]
 
@@ -4299,7 +4280,7 @@ async def test_debug_subgraphs(
 
 
 async def test_debug_nested_subgraphs(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     from collections import defaultdict
 
@@ -4344,7 +4325,7 @@ async def test_debug_nested_subgraphs(
             config=config,
             stream_mode="debug",
             subgraphs=True,
-            checkpoint_during=checkpoint_during,
+            durability=durability,
         )
     ]
 
@@ -4389,9 +4370,9 @@ async def test_debug_nested_subgraphs(
     for checkpoint_events, checkpoint_history, ns in zip(
         stream_ns.values(), history_ns.values(), stream_ns.keys()
     ):
-        if not checkpoint_during:
+        if durability == "exit":
             checkpoint_events = checkpoint_events[-1:]
-            if ns:  # Save no checkpoints for subgraphs when checkpoint_during=False
+            if ns:  # Save no checkpoints for subgraphs when durability="exit"
                 assert not checkpoint_history
                 continue
         assert len(checkpoint_events) == len(checkpoint_history)
@@ -4445,7 +4426,7 @@ async def test_parent_command(
     config = {"configurable": {"thread_id": "1"}}
 
     assert await graph.ainvoke(
-        {"messages": [("user", "get user name")]}, config, checkpoint_during=False
+        {"messages": [("user", "get user name")]}, config, durability="exit"
     ) == {
         "messages": [
             _AnyIdHumanMessage(
@@ -4540,9 +4521,7 @@ async def test_interrupt_multiple(async_checkpointer: BaseCheckpointSaver):
             "__interrupt__": (
                 Interrupt(
                     value={"value": 1},
-                    resumable=True,
-                    ns=[AnyStr("node:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         }
@@ -4560,9 +4539,7 @@ async def test_interrupt_multiple(async_checkpointer: BaseCheckpointSaver):
             "__interrupt__": (
                 Interrupt(
                     value={"value": 2},
-                    resumable=True,
-                    ns=[AnyStr("node:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         }
@@ -4610,9 +4587,7 @@ async def test_interrupt_loop(async_checkpointer: BaseCheckpointSaver):
             "__interrupt__": (
                 Interrupt(
                     value="How old are you?",
-                    resumable=True,
-                    ns=[AnyStr("node:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         }
@@ -4629,9 +4604,7 @@ async def test_interrupt_loop(async_checkpointer: BaseCheckpointSaver):
             "__interrupt__": (
                 Interrupt(
                     value="invalid response",
-                    resumable=True,
-                    ns=[AnyStr("node:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         }
@@ -4648,9 +4621,7 @@ async def test_interrupt_loop(async_checkpointer: BaseCheckpointSaver):
             "__interrupt__": (
                 Interrupt(
                     value="invalid response",
-                    resumable=True,
-                    ns=[AnyStr("node:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         }
@@ -4712,8 +4683,7 @@ async def test_interrupt_task_functional(async_checkpointer: BaseCheckpointSaver
         "__interrupt__": [
             Interrupt(
                 value="Provide value for bar:",
-                resumable=True,
-                ns=[AnyStr("graph:"), AnyStr("bar:")],
+                id=AnyStr(),
             ),
         ]
     }
@@ -4891,7 +4861,7 @@ async def test_multiple_interrupt_state_persistence(async_checkpointer: BaseChec
 
 
 async def test_checkpoint_recovery_async(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     """Test recovery from checkpoints after failures with async nodes."""
 
@@ -4924,7 +4894,7 @@ async def test_checkpoint_recovery_async(
         await graph.ainvoke(
             {"steps": ["start"], "attempt": 1},
             config,
-            checkpoint_during=checkpoint_during,
+            durability=durability,
         )
 
     # Verify checkpoint state
@@ -4935,13 +4905,13 @@ async def test_checkpoint_recovery_async(
 
     # Retry with updated attempt count
     result = await graph.ainvoke(
-        {"steps": [], "attempt": 2}, config, checkpoint_during=checkpoint_during
+        {"steps": [], "attempt": 2}, config, durability=durability
     )
     assert result == {"steps": ["start", "node1", "node2"], "attempt": 2}
 
     # Verify checkpoint history shows both attempts
     history = [c async for c in graph.aget_state_history(config)]
-    if checkpoint_during:
+    if durability != "exit":
         assert len(history) == 6  # Initial + failed attempt + successful attempt
     else:
         assert len(history) == 2  # error + success
@@ -5109,9 +5079,7 @@ async def test_double_interrupt_subgraph(async_checkpointer: BaseCheckpointSaver
             "__interrupt__": (
                 Interrupt(
                     value="interrupt node 1",
-                    resumable=True,
-                    ns=[AnyStr("node_1:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         },
@@ -5125,9 +5093,7 @@ async def test_double_interrupt_subgraph(async_checkpointer: BaseCheckpointSaver
             "__interrupt__": (
                 Interrupt(
                     value="interrupt node 2",
-                    resumable=True,
-                    ns=[AnyStr("node_2:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         },
@@ -5159,9 +5125,7 @@ async def test_double_interrupt_subgraph(async_checkpointer: BaseCheckpointSaver
             "__interrupt__": (
                 Interrupt(
                     value="interrupt node 1",
-                    resumable=True,
-                    ns=[AnyStr("invoke_sub_agent:"), AnyStr("node_1:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         },
@@ -5175,9 +5139,7 @@ async def test_double_interrupt_subgraph(async_checkpointer: BaseCheckpointSaver
             "__interrupt__": (
                 Interrupt(
                     value="interrupt node 2",
-                    resumable=True,
-                    ns=[AnyStr("invoke_sub_agent:"), AnyStr("node_2:")],
-                    when="during",
+                    id=AnyStr(),
                 ),
             )
         }
@@ -5769,8 +5731,7 @@ async def test_interrupt_subgraph_reenter_checkpointer_true(
         "__interrupt__": [
             Interrupt(
                 value="Provide value",
-                resumable=True,
-                ns=[AnyStr("call_subgraph"), AnyStr("subnode_2:")],
+                id=AnyStr(),
             )
         ],
     }
@@ -5780,8 +5741,7 @@ async def test_interrupt_subgraph_reenter_checkpointer_true(
         "__interrupt__": [
             Interrupt(
                 value="Provide value",
-                resumable=True,
-                ns=[AnyStr("call_subgraph"), AnyStr("subnode_2")],
+                id=AnyStr(),
             )
         ],
     }
@@ -5811,8 +5771,7 @@ async def test_interrupt_subgraph_reenter_checkpointer_true(
         "__interrupt__": [
             Interrupt(
                 value="Provide value",
-                resumable=True,
-                ns=[AnyStr("call_subgraph"), AnyStr("subnode_2:")],
+                id=AnyStr(),
             )
         ],
     }
@@ -5849,8 +5808,7 @@ async def test_handles_multiple_interrupts_from_tasks(
         "__interrupt__": [
             Interrupt(
                 value="Hey do you want to add James?",
-                resumable=True,
-                ns=[AnyStr("program:"), AnyStr("add_participant:")],
+                id=AnyStr(),
             ),
         ]
     }
@@ -5858,10 +5816,6 @@ async def test_handles_multiple_interrupts_from_tasks(
     state = await program.aget_state(config=config)
     assert len(state.tasks[0].interrupts) == 1
     task_interrupt = state.tasks[0].interrupts[0]
-    assert task_interrupt.resumable is True
-    assert len(task_interrupt.ns) == 2
-    assert task_interrupt.ns[0].startswith("program:")
-    assert task_interrupt.ns[1].startswith("add_participant:")
     assert task_interrupt.value == "Hey do you want to add James?"
 
     result = await program.ainvoke(Command(resume=True), config=config)
@@ -5869,8 +5823,7 @@ async def test_handles_multiple_interrupts_from_tasks(
         "__interrupt__": [
             Interrupt(
                 value="Hey do you want to add Will?",
-                resumable=True,
-                ns=[AnyStr("program:"), AnyStr("add_participant:")],
+                id=AnyStr(),
             ),
         ]
     }
@@ -5878,10 +5831,6 @@ async def test_handles_multiple_interrupts_from_tasks(
     state = await program.aget_state(config=config)
     assert len(state.tasks[0].interrupts) == 1
     task_interrupt = state.tasks[0].interrupts[0]
-    assert task_interrupt.resumable is True
-    assert len(task_interrupt.ns) == 2
-    assert task_interrupt.ns[0].startswith("program:")
-    assert task_interrupt.ns[1].startswith("add_participant:")
     assert task_interrupt.value == "Hey do you want to add Will?"
 
     result = await program.ainvoke(Command(resume=True), config=config)
@@ -5925,10 +5874,6 @@ async def test_interrupts_in_tasks_surfaced_once(
     state = await program.aget_state(config=config)
     assert len(state.tasks[0].interrupts) == 1
     task_interrupt = state.tasks[0].interrupts[0]
-    assert task_interrupt.resumable is True
-    assert len(task_interrupt.ns) == 2
-    assert task_interrupt.ns[0].startswith("program:")
-    assert task_interrupt.ns[1].startswith("add_participant:")
     assert task_interrupt.value == "Hey do you want to add James?"
 
     interrupts = [
@@ -5941,10 +5886,6 @@ async def test_interrupts_in_tasks_surfaced_once(
     state = await program.aget_state(config=config)
     assert len(state.tasks[0].interrupts) == 1
     task_interrupt = state.tasks[0].interrupts[0]
-    assert task_interrupt.resumable is True
-    assert len(task_interrupt.ns) == 2
-    assert task_interrupt.ns[0].startswith("program:")
-    assert task_interrupt.ns[1].startswith("add_participant:")
     assert task_interrupt.value == "Hey do you want to add Will?"
 
     result = await program.ainvoke(Command(resume=True), config=config)
@@ -6064,7 +6005,7 @@ async def test_bulk_state_updates(async_checkpointer: BaseCheckpointSaver) -> No
 
 
 async def test_update_as_input(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     class State(TypedDict):
         foo: str
@@ -6087,13 +6028,13 @@ async def test_update_as_input(
     assert await graph.ainvoke(
         {"foo": "input"},
         {"configurable": {"thread_id": "1"}},
-        checkpoint_during=checkpoint_during,
+        durability=durability,
     ) == {"foo": "tool"}
 
     assert await graph.ainvoke(
         {"foo": "input"},
         {"configurable": {"thread_id": "1"}},
-        checkpoint_during=checkpoint_during,
+        durability=durability,
     ) == {"foo": "tool"}
 
     def map_snapshot(i: StateSnapshot) -> dict:
@@ -6132,14 +6073,14 @@ async def test_update_as_input(
         async for s in graph.aget_state_history({"configurable": {"thread_id": "2"}})
     ]
 
-    if checkpoint_during:
+    if durability != "exit":
         assert new_history == history
     else:
         assert [new_history[0], new_history[4]] == history
 
 
 async def test_batch_update_as_input(
-    async_checkpointer: BaseCheckpointSaver, checkpoint_during: bool
+    async_checkpointer: BaseCheckpointSaver, durability: Durability
 ) -> None:
     class State(TypedDict):
         foo: str
@@ -6174,7 +6115,7 @@ async def test_batch_update_as_input(
     assert await graph.ainvoke(
         {"foo": "input"},
         {"configurable": {"thread_id": "1"}},
-        checkpoint_during=checkpoint_during,
+        durability=durability,
     ) == {"foo": "map", "tasks": [0, 1, 2]}
 
     def map_snapshot(i: StateSnapshot) -> dict:
@@ -6225,7 +6166,7 @@ async def test_batch_update_as_input(
         async for s in graph.aget_state_history({"configurable": {"thread_id": "2"}})
     ]
 
-    if checkpoint_during:
+    if durability != "exit":
         assert new_history == history
     else:
         assert new_history[:1] == history
