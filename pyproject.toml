@@ -7,7 +7,7 @@ name = "langgraph-checkpoint-mysql"
 version = "2.0.17"
 description = "Library with a MySQL implementation of LangGraph checkpoint saver."
 authors = [{ name = "Theodore Ni", email = "dev@ted.bio" }]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -51,7 +51,7 @@ dev = [
 default-groups = ["dev"]
 
 [tool.uv.sources]
-langgraph = { git = "https://github.com/langchain-ai/langgraph", rev = "8dc4465d059c9e7929c116c0423ca490cc887e49", subdirectory = "libs/langgraph" }
+langgraph = { git = "https://github.com/langchain-ai/langgraph", rev = "3c75e414e5d4472ba5e6c747675cc23804ab23e8", subdirectory = "libs/langgraph" }
 
 [tool.hatch.build.targets.wheel]
 include = ["langgraph"]
