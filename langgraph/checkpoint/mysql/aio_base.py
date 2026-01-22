@@ -68,7 +68,7 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
                 self.MIGRATIONS[version + 1 :],
             ):
                 await cur.execute(migration)
-                await cur.execute(f"INSERT INTO checkpoint_migrations (v) VALUES ({v})")
+                await cur.execute("INSERT INTO checkpoint_migrations (v) VALUES (%s)", (v,))
 
     async def alist(
         self,
