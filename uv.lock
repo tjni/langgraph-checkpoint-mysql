@@ -342,8 +342,8 @@ wheels = [
 
 [[package]]
 name = "langgraph"
-version = "1.0.2"
-source = { git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Flanggraph&rev=3c75e414e5d4472ba5e6c747675cc23804ab23e8#3c75e414e5d4472ba5e6c747675cc23804ab23e8" }
+version = "1.0.3"
+source = { git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Flanggraph&rev=2284a54b641de9d31378d7c3a53b5be2ce7dabd6#2284a54b641de9d31378d7c3a53b5be2ce7dabd6" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langgraph-checkpoint" },
@@ -356,7 +356,7 @@ dependencies = [
 [[package]]
 name = "langgraph-checkpoint"
 version = "3.0.1"
-source = { git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Fcheckpoint&rev=3c75e414e5d4472ba5e6c747675cc23804ab23e8#3c75e414e5d4472ba5e6c747675cc23804ab23e8" }
+source = { git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Fcheckpoint&rev=2284a54b641de9d31378d7c3a53b5be2ce7dabd6#2284a54b641de9d31378d7c3a53b5be2ce7dabd6" }
 dependencies = [
     { name = "langchain-core" },
     { name = "ormsgpack" },
@@ -364,7 +364,7 @@ dependencies = [
 
 [[package]]
 name = "langgraph-checkpoint-mysql"
-version = "2.0.17"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "langgraph-checkpoint" },
@@ -409,7 +409,7 @@ dev = [
 requires-dist = [
     { name = "aiomysql", marker = "extra == 'aiomysql'", specifier = ">=0.2.0" },
     { name = "asyncmy", marker = "extra == 'asyncmy'", specifier = ">=0.2.10" },
-    { name = "langgraph-checkpoint", specifier = ">=2.0.21" },
+    { name = "langgraph-checkpoint", specifier = ">=2.1.2" },
     { name = "orjson", specifier = ">=3.10.1" },
     { name = "pymysql", marker = "extra == 'pymysql'", specifier = ">=1.1.1" },
     { name = "typing-extensions", specifier = ">=4.12.2" },
@@ -422,7 +422,7 @@ dev = [
     { name = "anyio" },
     { name = "asyncmy", specifier = ">=0.2.10" },
     { name = "codespell" },
-    { name = "langgraph", git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Flanggraph&rev=3c75e414e5d4472ba5e6c747675cc23804ab23e8" },
+    { name = "langgraph", git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Flanggraph&rev=2284a54b641de9d31378d7c3a53b5be2ce7dabd6" },
     { name = "langgraph-checkpoint" },
     { name = "langgraph-checkpoint-sqlite" },
     { name = "mypy" },
@@ -454,8 +454,8 @@ wheels = [
 
 [[package]]
 name = "langgraph-prebuilt"
-version = "1.0.2"
-source = { git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Fprebuilt&rev=3c75e414e5d4472ba5e6c747675cc23804ab23e8#3c75e414e5d4472ba5e6c747675cc23804ab23e8" }
+version = "1.0.5"
+source = { git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Fprebuilt&rev=2284a54b641de9d31378d7c3a53b5be2ce7dabd6#2284a54b641de9d31378d7c3a53b5be2ce7dabd6" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langgraph-checkpoint" },
@@ -464,7 +464,7 @@ dependencies = [
 [[package]]
 name = "langgraph-sdk"
 version = "0.2.9"
-source = { git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Fsdk-py&rev=3c75e414e5d4472ba5e6c747675cc23804ab23e8#3c75e414e5d4472ba5e6c747675cc23804ab23e8" }
+source = { git = "https://github.com/langchain-ai/langgraph?subdirectory=libs%2Fsdk-py&rev=2284a54b641de9d31378d7c3a53b5be2ce7dabd6#2284a54b641de9d31378d7c3a53b5be2ce7dabd6" }
 dependencies = [
     { name = "httpx" },
     { name = "orjson" },
