@@ -134,8 +134,9 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         """
         where, args = self._search_where(config, filter, before)
         query = self._select_sql(where) + " ORDER BY checkpoint_id DESC"
-        if limit:
-            query += f" LIMIT {limit}"
+        if limit is not None:
+            query += " LIMIT %(limit)s"
+            args = {**args, "limit": int(limit)}
         # if we change this to use .stream() we need to make sure to close the cursor
         with self._cursor() as cur:
             cur.execute(query, args)

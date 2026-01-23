@@ -303,10 +303,11 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
         """
         where, args = self._search_where(config, filter, before)
         query = self.SELECT_SQL + where
-        if limit:
-            query += f" LIMIT {limit}"
+        if limit is not None:
+            query += " LIMIT %(limit)s"
+            args = {**args, "limit": int(limit)}
         with self._cursor() as cur:
-            cur.execute(self.SELECT_SQL + where, args)
+            cur.execute(query, args)
             values = cur.fetchall()
             for value in values:
                 pending_sends = deserialize_pending_sends(value["pending_sends"])
@@ -614,10 +615,11 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
         """
         where, args = self._search_where(config, filter, before)
         query = self.SELECT_SQL + where
-        if limit:
-            query += f" LIMIT {limit}"
+        if limit is not None:
+            query += " LIMIT %(limit)s"
+            args = {**args, "limit": int(limit)}
         async with self._cursor() as cur:
-            await cur.execute(self.SELECT_SQL + where, args)
+            await cur.execute(query, args)
             async for value in cur:
                 pending_sends = deserialize_pending_sends(value["pending_sends"])
                 checkpoint: Checkpoint = {
