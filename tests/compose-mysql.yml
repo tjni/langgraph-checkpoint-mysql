@@ -22,3 +22,6 @@ configs:
   init.sql:
     content: |
       GRANT ALL PRIVILEGES ON *.* TO 'mysql'@'%';
+      IF ${MYSQL_VERSION:-8} >= 9 THEN
+        INSTALL COMPONENT 'file://classic_hashing'
+      END IF;
