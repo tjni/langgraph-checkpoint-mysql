@@ -18,10 +18,10 @@ jobs:
       tag: ${{ steps.check-version.outputs.tag }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
@@ -71,7 +71,7 @@ jobs:
     outputs:
       release-body: ${{ steps.generate-release-body.outputs.release-body }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: tjni/langgraph-checkpoint-mysql
           path: langgraph-checkpoint-mysql
@@ -135,7 +135,7 @@ jobs:
       - test-pypi-publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # We explicitly *don't* set up caching here. This ensures our tests are
       # maximally sensitive to catching breakage.
@@ -151,7 +151,7 @@ jobs:
       #   used in the real world.
 
       - name: Set up Python
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
@@ -220,10 +220,10 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
@@ -257,10 +257,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
