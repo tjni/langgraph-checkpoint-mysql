@@ -51,7 +51,7 @@ dev = [
 default-groups = ["dev"]
 
 [tool.uv.sources]
-langgraph = { git = "https://github.com/langchain-ai/langgraph", rev = "2284a54b641de9d31378d7c3a53b5be2ce7dabd6", subdirectory = "libs/langgraph" }
+langgraph = { git = "https://github.com/langchain-ai/langgraph", rev = "7b9ff6129b35a4f1fddd5b5d78eb0b363605f092", subdirectory = "libs/langgraph" }
 
 [tool.hatch.build.targets.wheel]
 include = ["langgraph"]
