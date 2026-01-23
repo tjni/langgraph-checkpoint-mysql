@@ -8,6 +8,7 @@ services:
       MYSQL_DATABASE: mysql
       MYSQL_USER: mysql
       MYSQL_PASSWORD: mysql
+    command: ["mysqld", "--max_connections=1000"]
     healthcheck:
       test: mysqladmin -h 127.0.0.1 ping -P 3306 -u mysql -pmysql | grep "mysqld is alive"
       start_period: 10s
