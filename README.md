@@ -8,6 +8,9 @@ Implementation of LangGraph CheckpointSaver that uses MySQL.
 > [!NOTE]
 > In order to keep the queries close to the Postgres queries, we use features that require MySQL >= 8.0.19 or MariaDB >= 10.7.1.
 
+> [!NOTE]
+> MySQL >= 9.6.0 discontinued using the MD5 function in generated columns, but we have not created a migration path for this yet.
+
 ## Dependencies
 
 - To use synchronous `PyMySQLSaver`, install `langgraph-checkpoint-mysql[pymysql]`.

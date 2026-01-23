@@ -10,7 +10,7 @@ jobs:
       matrix:
         database:
           - db: "mysql"
-            version: "9"
+            version: "9.5"
           - db: "mysql"
             version: "8"
           - db: "mysql"
