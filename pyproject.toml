@@ -12,7 +12,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "langgraph-checkpoint>=2.0.21",
+  "langgraph-checkpoint>=2.1.2",
   "orjson>=3.10.1",
   "typing-extensions>=4.12.2",
 ]
