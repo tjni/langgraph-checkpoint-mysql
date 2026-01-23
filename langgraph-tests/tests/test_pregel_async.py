@@ -6932,6 +6932,7 @@ async def test_fork_does_not_apply_pending_writes(
     assert result == {"value": 121}
 
 
+@NEEDS_CONTEXTVARS
 async def test_interrupt_stream_mode_values(async_checkpointer: BaseCheckpointSaver):
     """Test that interrupts are surfaced on 'values' stream mode"""
 
