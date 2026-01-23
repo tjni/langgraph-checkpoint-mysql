@@ -13,9 +13,9 @@ from langgraph.checkpoint.base import (
     ChannelVersions,
     CheckpointMetadata,
     get_checkpoint_id,
+    get_serializable_checkpoint_metadata,
 )
 from langgraph.checkpoint.mysql.utils import mysql_mariadb_branch
-from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.serde.types import TASKS
 
 MetadataInput = Optional[dict[str, Any]]
@@ -252,8 +252,6 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
     UPSERT_CHECKPOINT_WRITES_SQL = UPSERT_CHECKPOINT_WRITES_SQL
     INSERT_CHECKPOINT_WRITES_SQL = INSERT_CHECKPOINT_WRITES_SQL
 
-    jsonplus_serde = JsonPlusSerializer()
-
     def _migrate_pending_sends(
         self,
         pending_sends: list[tuple[str, bytes]],
@@ -350,42 +348,6 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
             )
             for idx, (channel, value) in enumerate(writes)
         ]
-
-    def _load_metadata(self, metadata: str) -> CheckpointMetadata:
-        try:
-            return json.loads(metadata)
-        except (TypeError, json.JSONDecodeError):
-            # This is a best effort fallback for backwards compatibility with
-            # old checkpoints and old versions of LangGraph prior to "writes"
-            # being removed from metadata in
-            #
-            #   https://github.com/langchain-ai/langgraph/pull/4822
-            #
-            # It's a little unclear to me if this catches all issues due to theThis is to address issues such as
-            # complexity of the changes, but I hope it addresses issues like
-            #
-            #   https://github.com/langchain-ai/langgraph/issues/5769
-            #
-            return self.jsonplus_serde.loads(metadata.encode())
-
-    def _dump_metadata(self, metadata: CheckpointMetadata) -> str:
-        try:
-            return json.dumps(metadata)
-        except TypeError:
-            # This is a best effort fallback for backwards compatibility with
-            # old checkpoints and old versions of LangGraph prior to "writes"
-            # being removed from metadata in
-            #
-            #   https://github.com/langchain-ai/langgraph/pull/4822
-            #
-            # It's a little unclear to me if this catches all issues due to theThis is to address issues such as
-            # complexity of the changes, but I hope it addresses issues like
-            #
-            #   https://github.com/langchain-ai/langgraph/issues/5769
-            #
-            serialized_metadata = self.jsonplus_serde.dumps(metadata)
-            # NOTE: we're using JSON serializer (not msgpack), so we need to remove null characters before writing
-            return serialized_metadata.decode().replace("\\u0000", "")
 
     def get_next_version(self, current: str | None, channel: None) -> str:
         if current is None:

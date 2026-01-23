@@ -16,7 +16,7 @@ from langgraph.checkpoint.base import (
     CheckpointMetadata,
     CheckpointTuple,
     get_checkpoint_id,
-    get_checkpoint_metadata,
+    get_serializable_checkpoint_metadata,
 )
 from langgraph.checkpoint.mysql import _internal
 from langgraph.checkpoint.mysql.base import BaseMySQLSaver
@@ -339,7 +339,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                     checkpoint["id"],
                     checkpoint_id,
                     json.dumps(copy),
-                    self._dump_metadata(get_checkpoint_metadata(config, metadata)),
+                    json.dumps(get_serializable_checkpoint_metadata(config, metadata)),
                 ),
             )
         return next_config
@@ -426,7 +426,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                     **self._load_blobs(value["channel_values"]),
                 },
             },
-            self._load_metadata(value["metadata"]),
+            value["metadata"],
             (
                 {
                     "configurable": {
