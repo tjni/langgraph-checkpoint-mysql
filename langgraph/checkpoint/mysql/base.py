@@ -11,9 +11,7 @@ from langgraph.checkpoint.base import (
     WRITES_IDX_MAP,
     BaseCheckpointSaver,
     ChannelVersions,
-    CheckpointMetadata,
     get_checkpoint_id,
-    get_serializable_checkpoint_metadata,
 )
 from langgraph.checkpoint.mysql.utils import mysql_mariadb_branch
 from langgraph.checkpoint.serde.types import TASKS
