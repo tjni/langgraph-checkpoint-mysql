@@ -5538,6 +5538,7 @@ def test_interrupt_stream_mode_values(sync_checkpointer: BaseCheckpointSaver):
     ]
 
 
+@pytest.mark.parametrize("subgraph_persist", [True, False])
 def test_parent_command_goto_deeply_nested(
     sync_checkpointer: BaseCheckpointSaver,
     subgraph_persist: bool,
