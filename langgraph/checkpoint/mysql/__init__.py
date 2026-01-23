@@ -426,7 +426,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                     **self._load_blobs(value["channel_values"]),
                 },
             },
-            value["metadata"],
+            json.loads(value["metadata"]),
             (
                 {
                     "configurable": {

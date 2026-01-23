@@ -331,7 +331,7 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
                         }
                     },
                     checkpoint=checkpoint,
-                    metadata=value["metadata"],
+                    metadata=json.loads(value["metadata"]),
                     pending_writes=self._load_writes(
                         deserialize_pending_writes(value["pending_writes"])
                     ),
@@ -403,7 +403,7 @@ class BaseShallowSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R
                         }
                     },
                     checkpoint=checkpoint,
-                    metadata=value["metadata"],
+                    metadata=json.loads(value["metadata"]),
                     pending_writes=self._load_writes(
                         deserialize_pending_writes(value["pending_writes"])
                     ),
@@ -644,7 +644,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
                         }
                     },
                     checkpoint=checkpoint,
-                    metadata=value["metadata"],
+                    metadata=json.loads(value["metadata"]),
                     pending_writes=await asyncio.to_thread(
                         self._load_writes,
                         deserialize_pending_writes(value["pending_writes"]),
@@ -693,7 +693,7 @@ class BaseShallowAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainterna
                         }
                     },
                     checkpoint=checkpoint,
-                    metadata=value["metadata"],
+                    metadata=json.loads(value["metadata"]),
                     pending_writes=await asyncio.to_thread(
                         self._load_writes,
                         deserialize_pending_writes(value["pending_writes"]),
