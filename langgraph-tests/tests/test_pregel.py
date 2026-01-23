@@ -33,6 +33,7 @@ from langgraph.checkpoint.base import (
     BaseCheckpointSaver,
     CheckpointTuple,
 )
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.errors import InvalidUpdateError, ParentCommand
 from langgraph.func import entrypoint, task
 from langgraph.graph import END, START, StateGraph
@@ -5485,6 +5486,54 @@ def test_fork_does_not_apply_pending_writes(
 
     # Should be: 1 (input) + 20 (forked node_a) + 100 (node_b) = 121
     assert result == {"value": 121}
+
+
+def test_null_resume_disallowed_with_multiple_interrupts(
+    sync_checkpointer: BaseCheckpointSaver,
+) -> None:
+    class State(TypedDict):
+        text_1: str
+        text_2: str
+
+    def human_node_1(state: State):
+        value = interrupt({"text_to_revise": state["text_1"]})
+        return {"text_1": value}
+
+    def human_node_2(state: State):
+        value = interrupt({"text_to_revise": state["text_2"]})
+        return {"text_2": value}
+
+    graph_builder = StateGraph(State)
+    graph_builder.add_node("human_node_1", human_node_1)
+    graph_builder.add_node("human_node_2", human_node_2)
+
+    # Add both nodes in parallel from START
+    graph_builder.add_edge(START, "human_node_1")
+    graph_builder.add_edge(START, "human_node_2")
+
+    checkpointer = InMemorySaver()
+    graph = graph_builder.compile(checkpointer=checkpointer)
+
+    thread_id = str(uuid.uuid4())
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    graph.invoke(
+        {"text_1": "original text 1", "text_2": "original text 2"}, config=config
+    )
+
+    resume_map = {
+        i.id: f"resume for prompt: {i.value['text_to_revise']}"
+        for i in graph.get_state(config).interrupts
+    }
+    with pytest.raises(
+        RuntimeError,
+        match="When there are multiple pending interrupts, you must specify the interrupt id when resuming.",
+    ):
+        graph.invoke(Command(resume="singular resume"), config=config)
+
+    assert graph.invoke(Command(resume=resume_map), config=config) == {
+        "text_1": "resume for prompt: original text 1",
+        "text_2": "resume for prompt: original text 2",
+    }
 
 
 def test_interrupt_stream_mode_values(sync_checkpointer: BaseCheckpointSaver):
