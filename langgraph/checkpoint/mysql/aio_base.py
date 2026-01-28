@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections import defaultdict
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
@@ -26,6 +27,8 @@ from langgraph.checkpoint.mysql.utils import (
     deserialize_pending_writes,
 )
 from langgraph.checkpoint.serde.base import SerializerProtocol
+
+logger = logging.getLogger(__name__)
 
 
 class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
@@ -331,29 +334,87 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
             )
 
     @asynccontextmanager
-    async def _cursor(self, *, pipeline: bool = False) -> AsyncIterator[_ainternal.R]:
-        """Create a database cursor as a context manager.
+    async def _cursor(
+        self, *, pipeline: bool = False, max_retries: int = 3
+    ) -> AsyncIterator[_ainternal.R]:
+        """Create a database cursor as a context manager with automatic reconnection.
 
         Args:
             pipeline: whether to use transaction context manager and handle concurrency
+            max_retries: maximum number of retry attempts on connection failure (default: 3)
+
+        This method implements automatic reconnection with exponential backoff to handle:
+        - Database server restarts
+        - Network connection timeouts
+        - Stale connections being terminated
+
+        Raises:
+            Exception: The last exception if all retry attempts fail
         """
-        async with _ainternal.get_connection(self.conn) as conn:
-            if pipeline:
-                async with self.lock:
-                    await conn.begin()
-                    try:
-                        async with self._get_cursor_from_connection(conn) as cur:
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                async with _ainternal.get_connection(self.conn) as conn:
+                    if pipeline:
+                        async with self.lock:
+                            await conn.begin()
+                            try:
+                                async with self._get_cursor_from_connection(
+                                    conn
+                                ) as cur:
+                                    yield cur
+                                await conn.commit()
+                                return  # Success, exit retry loop
+                            except:
+                                await conn.rollback()
+                                raise
+                    else:
+                        async with (
+                            self.lock,
+                            self._get_cursor_from_connection(conn) as cur,
+                        ):
                             yield cur
-                        await conn.commit()
-                    except:
-                        await conn.rollback()
-                        raise
-            else:
-                async with (
-                    self.lock,
-                    self._get_cursor_from_connection(conn) as cur,
-                ):
-                    yield cur
+                        return  # Success, exit retry loop
+
+            except Exception as e:
+                last_exception = e
+                is_final_attempt = attempt == max_retries - 1
+
+                # Check if this is a connection-related error
+                error_msg = str(e).lower()
+                is_connection_error = any(
+                    keyword in error_msg
+                    for keyword in [
+                        "connection",
+                        "lost",
+                        "closed",
+                        "broken",
+                        "timeout",
+                        "not connected",
+                        "gone away",
+                    ]
+                )
+
+                if is_connection_error and not is_final_attempt:
+                    # Exponential backoff: 0.5s, 1.0s, 1.5s...
+                    backoff_time = 0.5 * (attempt + 1)
+                    logger.warning(
+                        f"Database connection error on attempt {attempt + 1}/{max_retries}: {e}. "
+                        f"Retrying in {backoff_time}s..."
+                    )
+                    await asyncio.sleep(backoff_time)
+                else:
+                    # Either not a connection error, or final attempt failed
+                    if is_final_attempt:
+                        logger.error(
+                            f"All {max_retries} connection attempts failed. Last error: {e}"
+                        )
+                    raise
+
+        # If we somehow exit the loop without returning, raise the last exception
+        if last_exception:
+            raise last_exception
 
     async def _load_checkpoint_tuple(self, value: dict[str, Any]) -> CheckpointTuple:
         """
