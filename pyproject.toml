@@ -58,6 +58,9 @@ include = ["langgraph"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config --durations=5 -vv"
+markers = [
+  "no_db: mark tests that do not require a running MySQL database",
+]
 
 [tool.ruff]
 lint.select = [

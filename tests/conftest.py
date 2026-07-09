@@ -30,8 +30,12 @@ async def conn(anyio_backend: str) -> AsyncIterator[aiomysql.Connection]:
 
 
 @pytest.fixture(scope="function", autouse=True)
-async def clear_test_db(conn: aiomysql.Connection) -> None:
+async def clear_test_db(request: pytest.FixtureRequest) -> None:
     """Delete all tables before each test."""
+    if request.node.get_closest_marker("no_db"):
+        return
+
+    conn: aiomysql.Connection = request.getfixturevalue("conn")
     try:
         async with conn.cursor() as cursor:
             await cursor.execute("DELETE FROM checkpoints")

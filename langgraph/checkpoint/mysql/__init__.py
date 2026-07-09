@@ -19,7 +19,10 @@ from langgraph.checkpoint.base import (
     get_serializable_checkpoint_metadata,
 )
 from langgraph.checkpoint.mysql import _internal
-from langgraph.checkpoint.mysql.base import BaseMySQLSaver
+from langgraph.checkpoint.mysql.base import (
+    BaseMySQLSaver,
+    _SyncCheckpointRetryMixin,
+)
 from langgraph.checkpoint.mysql.utils import (
     deserialize_channel_values,
     deserialize_pending_sends,
@@ -30,7 +33,11 @@ from langgraph.checkpoint.serde.base import SerializerProtocol
 Conn = _internal.Conn  # For backward compatibility
 
 
-class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
+class BaseSyncMySQLSaver(
+    _SyncCheckpointRetryMixin,
+    BaseMySQLSaver,
+    Generic[_internal.C, _internal.R],
+):
     lock: threading.Lock
 
     def __init__(
@@ -100,6 +107,23 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         before: RunnableConfig | None = None,
         limit: int | None = None,
     ) -> Iterator[CheckpointTuple]:
+        results = self._with_retry(
+            self._list,
+            config,
+            filter=filter,
+            before=before,
+            limit=limit,
+        )
+        yield from results
+
+    def _list(
+        self,
+        config: RunnableConfig | None,
+        *,
+        filter: dict[str, Any] | None = None,
+        before: RunnableConfig | None = None,
+        limit: int | None = None,
+    ) -> list[CheckpointTuple]:
         """List checkpoints from the database.
 
         This method retrieves a list of checkpoint tuples from the MySQL database based
@@ -142,7 +166,7 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
             cur.execute(query, args)
             values = cur.fetchall()
             if not values:
-                return
+                return []
             for value in values:
                 value["checkpoint"] = json.loads(value["checkpoint"])
                 value["channel_values"] = deserialize_channel_values(
@@ -161,23 +185,25 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                         *[v["parent_checkpoint_id"] for v in to_migrate],
                     ),
                 )
-            pending_sends = cur.fetchall()
-            grouped_by_parent = defaultdict(list)
-            for value in to_migrate:
-                grouped_by_parent[value["parent_checkpoint_id"]].append(value)
-            for sends in pending_sends:
-                for value in grouped_by_parent[sends["checkpoint_id"]]:
-                    if value["channel_values"] is None:
-                        value["channel_values"] = []
-                    self._migrate_pending_sends(
-                        deserialize_pending_sends(sends["sends"]),
-                        value["checkpoint"],
-                        value["channel_values"],
-                    )
-            for value in values:
-                yield self._load_checkpoint_tuple(value)
+                pending_sends = cur.fetchall()
+                grouped_by_parent = defaultdict(list)
+                for value in to_migrate:
+                    grouped_by_parent[value["parent_checkpoint_id"]].append(value)
+                for sends in pending_sends:
+                    for value in grouped_by_parent[sends["checkpoint_id"]]:
+                        if value["channel_values"] is None:
+                            value["channel_values"] = []
+                        self._migrate_pending_sends(
+                            deserialize_pending_sends(sends["sends"]),
+                            value["checkpoint"],
+                            value["channel_values"],
+                        )
+            return [self._load_checkpoint_tuple(value) for value in values]
 
     def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
+        return self._with_retry(self._get_tuple, config)
+
+    def _get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         """Get a checkpoint tuple from the database.
 
         This method retrieves a checkpoint tuple from the MySQL database based on the
@@ -269,6 +295,21 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
+        return self._with_retry(
+            self._put,
+            config,
+            checkpoint,
+            metadata,
+            new_versions,
+        )
+
+    def _put(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        new_versions: ChannelVersions,
+    ) -> RunnableConfig:
         """Save a checkpoint to the database.
 
         This method saves a checkpoint to the MySQL database. The checkpoint is associated
@@ -351,6 +392,21 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         task_id: str,
         task_path: str = "",
     ) -> None:
+        return self._with_retry(
+            self._put_writes,
+            config,
+            writes,
+            task_id,
+            task_path,
+        )
+
+    def _put_writes(
+        self,
+        config: RunnableConfig,
+        writes: Sequence[tuple[str, Any]],
+        task_id: str,
+        task_path: str = "",
+    ) -> None:
         """Store intermediate writes linked to a checkpoint.
 
         This method saves intermediate writes associated with a checkpoint to the MySQL database.
@@ -379,6 +435,9 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
             )
 
     def delete_thread(self, thread_id: str) -> None:
+        return self._with_retry(self._delete_thread, thread_id)
+
+    def _delete_thread(self, thread_id: str) -> None:
         """Delete all checkpoints and writes associated with a thread ID.
         Args:
             thread_id: The thread ID to delete.
