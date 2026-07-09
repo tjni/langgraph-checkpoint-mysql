@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import random
-from collections.abc import Sequence
-from typing import Any, Optional, cast
+import time
+from collections.abc import Awaitable, Callable, Sequence
+from contextlib import suppress
+from typing import Any, Optional, TypeVar, cast
 
 from langchain_core.runnables import RunnableConfig
 
@@ -17,6 +21,126 @@ from langgraph.checkpoint.mysql.utils import mysql_mariadb_branch
 from langgraph.checkpoint.serde.types import TASKS
 
 MetadataInput = Optional[dict[str, Any]]
+_T = TypeVar("_T")
+
+_DISCONNECT_ERROR_CODES = {2003, 2006, 2013}
+_DISCONNECT_ERROR_MARKERS = (
+    "server has gone away",
+    "lost connection",
+    "broken pipe",
+    "connection reset",
+    "connection refused",
+    "connection closed",
+    "already closed",
+    "not connected",
+    "network is unreachable",
+    "timed out",
+    "readexactly",
+)
+
+
+def _is_disconnect_error(exc: BaseException) -> bool:
+    if isinstance(
+        exc,
+        (
+            BrokenPipeError,
+            ConnectionResetError,
+            ConnectionAbortedError,
+            TimeoutError,
+        ),
+    ):
+        return True
+
+    exc_name = exc.__class__.__name__
+    if exc_name == "InterfaceError":
+        return True
+    if exc_name == "OperationalError":
+        code = exc.args[0] if exc.args else None
+        if code in _DISCONNECT_ERROR_CODES:
+            return True
+
+    text = str(exc).lower()
+    return any(marker in text for marker in _DISCONNECT_ERROR_MARKERS)
+
+
+class _SyncCheckpointRetryMixin:
+    retry_max_attempts: int = 3
+    retry_base_delay: float = 0.2
+    conn: Any
+
+    def _recover_connection(self) -> None:
+        ping = getattr(self.conn, "ping", None)
+        if not callable(ping):
+            return
+
+        ping(reconnect=True)
+
+    def _with_retry(
+        self,
+        operation: Callable[..., _T],
+        *args: Any,
+        **kwargs: Any,
+    ) -> _T:
+        for attempt in range(1, self.retry_max_attempts + 1):
+            try:
+                return operation(*args, **kwargs)
+            except Exception as exc:
+                if not _is_disconnect_error(exc):
+                    raise
+                if attempt >= self.retry_max_attempts:
+                    raise
+
+                # Recovery is opportunistic; the next operation retry remains
+                # responsible for surfacing the original connectivity failure.
+                with suppress(Exception):
+                    self._recover_connection()
+
+                delay = self.retry_base_delay * attempt
+                if delay > 0:
+                    time.sleep(delay)
+
+        raise RuntimeError("unreachable retry state")
+
+
+class _AsyncCheckpointRetryMixin:
+    retry_max_attempts: int = 3
+    retry_base_delay: float = 0.2
+    conn: Any
+
+    async def _recover_connection(self) -> None:
+        ping = getattr(self.conn, "ping", None)
+        if not callable(ping):
+            return
+
+        result = ping(reconnect=True)
+        if inspect.isawaitable(result):
+            await result
+
+    async def _with_retry(
+        self,
+        operation: Callable[..., Awaitable[_T]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> _T:
+        for attempt in range(1, self.retry_max_attempts + 1):
+            try:
+                return await operation(*args, **kwargs)
+            except Exception as exc:
+                if not _is_disconnect_error(exc):
+                    raise
+                if attempt >= self.retry_max_attempts:
+                    raise
+
+                # Recovery is opportunistic; the next operation retry remains
+                # responsible for surfacing the original connectivity failure.
+                with suppress(Exception):
+                    await self._recover_connection()
+
+                delay = self.retry_base_delay * attempt
+                if delay > 0:
+                    await asyncio.sleep(delay)
+
+        raise RuntimeError("unreachable retry state")
 
 """
 To add a new migration, add a new string to the MIGRATIONS list.

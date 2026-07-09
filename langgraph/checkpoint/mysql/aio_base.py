@@ -19,7 +19,10 @@ from langgraph.checkpoint.base import (
     get_serializable_checkpoint_metadata,
 )
 from langgraph.checkpoint.mysql import _ainternal
-from langgraph.checkpoint.mysql.base import BaseMySQLSaver
+from langgraph.checkpoint.mysql.base import (
+    BaseMySQLSaver,
+    _AsyncCheckpointRetryMixin,
+)
 from langgraph.checkpoint.mysql.utils import (
     deserialize_channel_values,
     deserialize_pending_sends,
@@ -28,7 +31,11 @@ from langgraph.checkpoint.mysql.utils import (
 from langgraph.checkpoint.serde.base import SerializerProtocol
 
 
-class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
+class BaseAsyncMySQLSaver(
+    _AsyncCheckpointRetryMixin,
+    BaseMySQLSaver,
+    Generic[_ainternal.C, _ainternal.R],
+):
     lock: asyncio.Lock
 
     def __init__(
@@ -80,6 +87,24 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         before: RunnableConfig | None = None,
         limit: int | None = None,
     ) -> AsyncIterator[CheckpointTuple]:
+        results = await self._with_retry(
+            self._alist,
+            config,
+            filter=filter,
+            before=before,
+            limit=limit,
+        )
+        for result in results:
+            yield result
+
+    async def _alist(
+        self,
+        config: RunnableConfig | None,
+        *,
+        filter: dict[str, Any] | None = None,
+        before: RunnableConfig | None = None,
+        limit: int | None = None,
+    ) -> list[CheckpointTuple]:
         """List checkpoints from the database asynchronously.
 
         This method retrieves a list of checkpoint tuples from the MySQL database based
@@ -104,7 +129,7 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
             await cur.execute(query, args)
             values = await cur.fetchall()
             if not values:
-                return
+                return []
             for value in values:
                 value["checkpoint"] = json.loads(value["checkpoint"])
                 value["channel_values"] = deserialize_channel_values(
@@ -135,10 +160,12 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
                             value["checkpoint"],
                             value["channel_values"],
                         )
-            for value in values:
-                yield await self._load_checkpoint_tuple(value)
+            return [await self._load_checkpoint_tuple(value) for value in values]
 
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
+        return await self._with_retry(self._aget_tuple, config)
+
+    async def _aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         """Get a checkpoint tuple from the database asynchronously.
 
         This method retrieves a checkpoint tuple from the MySQL database based on the
@@ -204,6 +231,21 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
             return await self._load_checkpoint_tuple(value)
 
     async def aput(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        new_versions: ChannelVersions,
+    ) -> RunnableConfig:
+        return await self._with_retry(
+            self._aput,
+            config,
+            checkpoint,
+            metadata,
+            new_versions,
+        )
+
+    async def _aput(
         self,
         config: RunnableConfig,
         checkpoint: Checkpoint,
@@ -283,6 +325,21 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         task_id: str,
         task_path: str = "",
     ) -> None:
+        return await self._with_retry(
+            self._aput_writes,
+            config,
+            writes,
+            task_id,
+            task_path,
+        )
+
+    async def _aput_writes(
+        self,
+        config: RunnableConfig,
+        writes: Sequence[tuple[str, Any]],
+        task_id: str,
+        task_path: str = "",
+    ) -> None:
         """Store intermediate writes linked to a checkpoint asynchronously.
 
         This method saves intermediate writes associated with a checkpoint to the database.
@@ -310,6 +367,9 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
             await cur.executemany(query, params)
 
     async def adelete_thread(self, thread_id: str) -> None:
+        return await self._with_retry(self._adelete_thread, thread_id)
+
+    async def _adelete_thread(self, thread_id: str) -> None:
         """Delete all checkpoints and writes associated with a thread ID.
         Args:
             thread_id: The thread ID to delete.

@@ -19,7 +19,9 @@ from langgraph.checkpoint.base import (
     create_checkpoint,
     empty_checkpoint,
 )
+from langgraph.checkpoint.mysql import BaseSyncMySQLSaver
 from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver, ShallowPyMySQLSaver
+from langgraph.checkpoint.mysql.shallow import BaseShallowSyncMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
 from tests.conftest import (
     DEFAULT_BASE_URI,
@@ -39,8 +41,148 @@ SAVERS = [
 NON_SHALLOW_SAVERS = [saver for saver in SAVERS if saver != "shallow"]
 
 
+class _RetryableOperationalError(Exception):
+    pass
+
+
+_RetryableOperationalError.__name__ = "OperationalError"
+
+
+class _NonRetryableOperationalError(Exception):
+    pass
+
+
+_NonRetryableOperationalError.__name__ = "OperationalError"
+
+
+class _RetryHarnessConnection:
+    def __init__(self) -> None:
+        self.pings = 0
+
+    def ping(self, reconnect: bool = True) -> None:
+        assert reconnect is True
+        self.pings += 1
+
+
+class _RetryHarnessSaver(BaseSyncMySQLSaver):
+    retry_base_delay = 0
+
+    @staticmethod
+    def _get_cursor_from_connection(conn: Any) -> Any:
+        raise NotImplementedError
+
+
+class _ShallowRetryHarnessSaver(BaseShallowSyncMySQLSaver):
+    retry_base_delay = 0
+
+    @staticmethod
+    def _get_cursor_from_connection(conn: Any) -> Any:
+        raise NotImplementedError
+
+
 def _exclude_keys(config: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in config.items() if k not in EXCLUDED_METADATA_KEYS}
+
+
+@pytest.mark.no_db
+async def test_sync_saver_retries_put_after_disconnect() -> None:
+    conn = _RetryHarnessConnection()
+    saver = _RetryHarnessSaver(conn)
+    calls = 0
+
+    def flaky_put(*args: Any, **kwargs: Any) -> RunnableConfig:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise _RetryableOperationalError(2006, "server has gone away")
+        return {"configurable": {"thread_id": "thread-1", "checkpoint_id": "1"}}
+
+    setattr(saver, "_put", flaky_put)
+
+    result = saver.put(
+        {"configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}},
+        empty_checkpoint(),
+        {},
+        {},
+    )
+
+    assert calls == 2
+    assert conn.pings == 1
+    assert result["configurable"]["checkpoint_id"] == "1"
+
+
+@pytest.mark.no_db
+async def test_sync_saver_does_not_retry_non_disconnect_errors() -> None:
+    conn = _RetryHarnessConnection()
+    saver = _RetryHarnessSaver(conn)
+    calls = 0
+
+    def failing_put(*args: Any, **kwargs: Any) -> RunnableConfig:
+        nonlocal calls
+        calls += 1
+        raise _NonRetryableOperationalError(1064, "syntax error")
+
+    setattr(saver, "_put", failing_put)
+
+    with pytest.raises(_NonRetryableOperationalError):
+        saver.put(
+            {"configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}},
+            empty_checkpoint(),
+            {},
+            {},
+        )
+
+    assert calls == 1
+    assert conn.pings == 0
+
+
+@pytest.mark.no_db
+async def test_sync_saver_retries_list_full_operation() -> None:
+    conn = _RetryHarnessConnection()
+    saver = _RetryHarnessSaver(conn)
+    calls = 0
+
+    def flaky_list(*args: Any, **kwargs: Any) -> list[Any]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise _RetryableOperationalError(2013, "lost connection")
+        return ["checkpoint"]
+
+    setattr(saver, "_list", flaky_list)
+
+    results = list(saver.list(None))
+
+    assert calls == 2
+    assert conn.pings == 1
+    assert results == ["checkpoint"]
+
+
+@pytest.mark.no_db
+async def test_shallow_sync_saver_retries_put_after_disconnect() -> None:
+    conn = _RetryHarnessConnection()
+    saver = _ShallowRetryHarnessSaver(conn)
+    calls = 0
+
+    def flaky_put(*args: Any, **kwargs: Any) -> RunnableConfig:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise _RetryableOperationalError(2006, "server has gone away")
+        return {"configurable": {"thread_id": "thread-1", "checkpoint_id": "1"}}
+
+    setattr(saver, "_put", flaky_put)
+
+    result = saver.put(
+        {"configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}},
+        empty_checkpoint(),
+        {},
+        {},
+    )
+
+    assert calls == 2
+    assert conn.pings == 1
+    assert result["configurable"]["checkpoint_id"] == "1"
 
 
 @contextmanager

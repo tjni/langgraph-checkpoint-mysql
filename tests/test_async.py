@@ -42,8 +42,148 @@ SAVERS = [
 NON_SHALLOW_SAVERS = [saver for saver in SAVERS if "shallow" not in saver]
 
 
+class _RetryableOperationalError(Exception):
+    pass
+
+
+_RetryableOperationalError.__name__ = "OperationalError"
+
+
+class _NonRetryableOperationalError(Exception):
+    pass
+
+
+_NonRetryableOperationalError.__name__ = "OperationalError"
+
+
+class _RetryHarnessConnection:
+    def __init__(self) -> None:
+        self.pings = 0
+
+    async def ping(self, reconnect: bool = True) -> None:
+        assert reconnect is True
+        self.pings += 1
+
+
+class _RetryHarnessSaver(BaseAsyncMySQLSaver):
+    retry_base_delay = 0
+
+    @staticmethod
+    def _get_cursor_from_connection(conn: Any) -> Any:
+        raise NotImplementedError
+
+
+class _ShallowRetryHarnessSaver(BaseShallowAsyncMySQLSaver):
+    retry_base_delay = 0
+
+    @staticmethod
+    def _get_cursor_from_connection(conn: Any) -> Any:
+        raise NotImplementedError
+
+
 def _exclude_keys(config: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in config.items() if k not in EXCLUDED_METADATA_KEYS}
+
+
+@pytest.mark.no_db
+async def test_async_saver_retries_aput_after_disconnect() -> None:
+    conn = _RetryHarnessConnection()
+    saver = _RetryHarnessSaver(conn)
+    calls = 0
+
+    async def flaky_aput(*args: Any, **kwargs: Any) -> RunnableConfig:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise _RetryableOperationalError(2006, "server has gone away")
+        return {"configurable": {"thread_id": "thread-1", "checkpoint_id": "1"}}
+
+    setattr(saver, "_aput", flaky_aput)
+
+    result = await saver.aput(
+        {"configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}},
+        empty_checkpoint(),
+        {},
+        {},
+    )
+
+    assert calls == 2
+    assert conn.pings == 1
+    assert result["configurable"]["checkpoint_id"] == "1"
+
+
+@pytest.mark.no_db
+async def test_async_saver_does_not_retry_non_disconnect_errors() -> None:
+    conn = _RetryHarnessConnection()
+    saver = _RetryHarnessSaver(conn)
+    calls = 0
+
+    async def failing_aput(*args: Any, **kwargs: Any) -> RunnableConfig:
+        nonlocal calls
+        calls += 1
+        raise _NonRetryableOperationalError(1064, "syntax error")
+
+    setattr(saver, "_aput", failing_aput)
+
+    with pytest.raises(_NonRetryableOperationalError):
+        await saver.aput(
+            {"configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}},
+            empty_checkpoint(),
+            {},
+            {},
+        )
+
+    assert calls == 1
+    assert conn.pings == 0
+
+
+@pytest.mark.no_db
+async def test_async_saver_retries_alist_full_operation() -> None:
+    conn = _RetryHarnessConnection()
+    saver = _RetryHarnessSaver(conn)
+    calls = 0
+
+    async def flaky_alist(*args: Any, **kwargs: Any) -> list[Any]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise _RetryableOperationalError(2013, "lost connection")
+        return ["checkpoint"]
+
+    setattr(saver, "_alist", flaky_alist)
+
+    results = [item async for item in saver.alist(None)]
+
+    assert calls == 2
+    assert conn.pings == 1
+    assert results == ["checkpoint"]
+
+
+@pytest.mark.no_db
+async def test_shallow_async_saver_retries_aput_after_disconnect() -> None:
+    conn = _RetryHarnessConnection()
+    saver = _ShallowRetryHarnessSaver(conn)
+    calls = 0
+
+    async def flaky_aput(*args: Any, **kwargs: Any) -> RunnableConfig:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise _RetryableOperationalError(2006, "server has gone away")
+        return {"configurable": {"thread_id": "thread-1", "checkpoint_id": "1"}}
+
+    setattr(saver, "_aput", flaky_aput)
+
+    result = await saver.aput(
+        {"configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}},
+        empty_checkpoint(),
+        {},
+        {},
+    )
+
+    assert calls == 2
+    assert conn.pings == 1
+    assert result["configurable"]["checkpoint_id"] == "1"
 
 
 @asynccontextmanager
