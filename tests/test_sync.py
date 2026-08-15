@@ -10,7 +10,6 @@ from uuid import uuid4
 import pymysql
 import pytest
 from langchain_core.runnables import RunnableConfig
-
 from langgraph.checkpoint.base import (
     EXCLUDED_METADATA_KEYS,
     ChannelVersions,
@@ -19,8 +18,10 @@ from langgraph.checkpoint.base import (
     create_checkpoint,
     empty_checkpoint,
 )
-from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver, ShallowPyMySQLSaver
 from langgraph.checkpoint.serde.types import TASKS
+
+from langgraph.checkpoint.mysql import CheckpointTableConfig
+from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver, ShallowPyMySQLSaver
 from tests.conftest import (
     DEFAULT_BASE_URI,
     get_pymysql_sqlalchemy_engine,
@@ -37,6 +38,34 @@ SAVERS = [
 ]
 
 NON_SHALLOW_SAVERS = [saver for saver in SAVERS if saver != "shallow"]
+
+
+def test_custom_checkpoint_table_names() -> None:
+    table_config = CheckpointTableConfig(
+        prefix="tenant_a_",
+        checkpoints="tenant_a_history",
+    )
+    config: RunnableConfig = {
+        "configurable": {"thread_id": "custom-thread", "checkpoint_ns": ""}
+    }
+
+    with _database() as database:
+        with PyMySQLSaver.from_conn_string(
+            DEFAULT_BASE_URI + database,
+            table_config=table_config,
+        ) as saver:
+            saver.setup()
+            saved_config = saver.put(config, empty_checkpoint(), {}, {})
+
+            assert saver.get(saved_config) is not None
+            saver.delete_thread("custom-thread")
+            assert saver.get(saved_config) is None
+
+            with saver.conn.cursor() as cursor:
+                cursor.execute("SHOW TABLES")
+                table_names = {row[0] for row in cursor.fetchall()}
+
+            assert table_names == set(table_config.resolved().values())
 
 
 def _exclude_keys(config: dict[str, Any]) -> dict[str, Any]:

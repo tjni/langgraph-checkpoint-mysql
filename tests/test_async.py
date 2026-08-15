@@ -11,7 +11,6 @@ import aiomysql  # type: ignore
 import asyncmy  # type: ignore
 import pytest
 from langchain_core.runnables import RunnableConfig
-
 from langgraph.checkpoint.base import (
     EXCLUDED_METADATA_KEYS,
     ChannelVersions,
@@ -20,12 +19,14 @@ from langgraph.checkpoint.base import (
     create_checkpoint,
     empty_checkpoint,
 )
+from langgraph.checkpoint.serde.types import TASKS
+from langgraph.graph import END, START, MessagesState, StateGraph
+
+from langgraph.checkpoint.mysql import CheckpointTableConfig
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver, ShallowAIOMySQLSaver
 from langgraph.checkpoint.mysql.aio_base import BaseAsyncMySQLSaver
 from langgraph.checkpoint.mysql.asyncmy import AsyncMySaver, ShallowAsyncMySaver
 from langgraph.checkpoint.mysql.shallow import BaseShallowAsyncMySQLSaver
-from langgraph.checkpoint.serde.types import TASKS
-from langgraph.graph import END, START, MessagesState, StateGraph
 from tests.conftest import DEFAULT_BASE_URI
 
 pytestmark = pytest.mark.anyio
@@ -40,6 +41,25 @@ SAVERS = [
 ]
 
 NON_SHALLOW_SAVERS = [saver for saver in SAVERS if "shallow" not in saver]
+
+
+@pytest.mark.parametrize("saver_name", NON_SHALLOW_SAVERS)
+async def test_custom_checkpoint_table_names(saver_name: str) -> None:
+    async with _saver(saver_name) as saver:
+        custom_saver = type(saver)(
+            saver.conn,
+            table_config=CheckpointTableConfig(prefix="tenant_a_"),
+        )
+        config: RunnableConfig = {
+            "configurable": {"thread_id": "custom-thread", "checkpoint_ns": ""}
+        }
+
+        await custom_saver.setup()
+        saved_config = await custom_saver.aput(config, empty_checkpoint(), {}, {})
+
+        assert await custom_saver.aget(saved_config) is not None
+        await custom_saver.adelete_thread("custom-thread")
+        assert await custom_saver.aget(saved_config) is None
 
 
 def _exclude_keys(config: dict[str, Any]) -> dict[str, Any]:

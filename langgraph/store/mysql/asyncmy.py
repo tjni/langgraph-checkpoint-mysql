@@ -8,6 +8,7 @@ from asyncmy import Connection, connect  # type: ignore
 from asyncmy.cursors import DictCursor  # type: ignore
 from typing_extensions import Self, override
 
+from langgraph._mysql import StoreTableConfig
 from langgraph.store.mysql.aio_base import BaseAsyncMySQLStore
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,8 @@ class AsyncMyStore(BaseAsyncMySQLStore[Connection, DictCursor]):
     async def from_conn_string(
         cls,
         conn_string: str,
+        *,
+        table_config: StoreTableConfig | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new AsyncMyStore instance from a connection string.
 
@@ -50,7 +53,7 @@ class AsyncMyStore(BaseAsyncMySQLStore[Connection, DictCursor]):
             **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            yield cls(conn=conn)
+            yield cls(conn=conn, table_config=table_config)
 
     @override
     @staticmethod

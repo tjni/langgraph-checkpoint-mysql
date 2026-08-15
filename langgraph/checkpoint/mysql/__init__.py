@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from typing import Any, Generic
 
 from langchain_core.runnables import RunnableConfig
-
 from langgraph.checkpoint.base import (
     WRITES_IDX_MAP,
     ChannelVersions,
@@ -18,6 +17,9 @@ from langgraph.checkpoint.base import (
     get_checkpoint_id,
     get_serializable_checkpoint_metadata,
 )
+from langgraph.checkpoint.serde.base import SerializerProtocol
+
+from langgraph._mysql import CheckpointTableConfig
 from langgraph.checkpoint.mysql import _internal
 from langgraph.checkpoint.mysql.base import BaseMySQLSaver
 from langgraph.checkpoint.mysql.utils import (
@@ -25,7 +27,6 @@ from langgraph.checkpoint.mysql.utils import (
     deserialize_pending_sends,
     deserialize_pending_writes,
 )
-from langgraph.checkpoint.serde.base import SerializerProtocol
 
 Conn = _internal.Conn  # For backward compatibility
 
@@ -37,8 +38,10 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         self,
         conn: _internal.Conn[_internal.C],
         serde: SerializerProtocol | None = None,
+        *,
+        table_config: CheckpointTableConfig | None = None,
     ) -> None:
-        super().__init__(serde=serde)
+        super().__init__(serde=serde, table_config=table_config)
 
         self.conn = conn
         self.lock = threading.Lock()
@@ -78,7 +81,11 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         """
         with self._cursor() as cur:
             cur.execute(self.MIGRATIONS[0])
-            cur.execute("SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1")
+            cur.execute(
+                self._render_sql(
+                    "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
+                )
+            )
             row = cur.fetchone()
             if row is None:
                 version = -1
@@ -89,7 +96,12 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
                 self.MIGRATIONS[version + 1 :],
             ):
                 cur.execute(migration)
-                cur.execute("INSERT INTO checkpoint_migrations (v) VALUES (%s)", (v,))
+                cur.execute(
+                    self._render_sql(
+                        "INSERT INTO checkpoint_migrations (v) VALUES (%s)"
+                    ),
+                    (v,),
+                )
                 cur.execute("COMMIT")
 
     def list(
@@ -387,15 +399,15 @@ class BaseSyncMySQLSaver(BaseMySQLSaver, Generic[_internal.C, _internal.R]):
         """
         with self._cursor(pipeline=True) as cur:
             cur.execute(
-                "DELETE FROM checkpoints WHERE thread_id = %s",
+                self._render_sql("DELETE FROM checkpoints WHERE thread_id = %s"),
                 (str(thread_id),),
             )
             cur.execute(
-                "DELETE FROM checkpoint_blobs WHERE thread_id = %s",
+                self._render_sql("DELETE FROM checkpoint_blobs WHERE thread_id = %s"),
                 (str(thread_id),),
             )
             cur.execute(
-                "DELETE FROM checkpoint_writes WHERE thread_id = %s",
+                self._render_sql("DELETE FROM checkpoint_writes WHERE thread_id = %s"),
                 (str(thread_id),),
             )
 

@@ -8,14 +8,32 @@ from concurrent.futures import ThreadPoolExecutor
 import aiomysql  # type: ignore
 import asyncmy
 import pytest
-
 from langgraph.store.base import GetOp, Item, ListNamespacesOp, PutOp, SearchOp
+
+from langgraph.store.mysql import StoreTableConfig
 from langgraph.store.mysql.aio import AIOMySQLStore
 from langgraph.store.mysql.aio_base import BaseAsyncMySQLStore
 from langgraph.store.mysql.asyncmy import AsyncMyStore
 from tests.conftest import DEFAULT_BASE_URI
 
 pytestmark = pytest.mark.anyio
+
+
+async def test_custom_store_table_names_are_isolated(
+    store: BaseAsyncMySQLStore,
+) -> None:
+    custom_store = type(store)(
+        store.conn,
+        table_config=StoreTableConfig(prefix="tenant_a_"),
+    )
+    await custom_store.setup()
+
+    namespace = ("shared",)
+    await store.aput(namespace, "key", {"source": "default"})
+    await custom_store.aput(namespace, "key", {"source": "custom"})
+
+    assert (await store.aget(namespace, "key")).value == {"source": "default"}
+    assert (await custom_store.aget(namespace, "key")).value == {"source": "custom"}
 
 
 @pytest.fixture(

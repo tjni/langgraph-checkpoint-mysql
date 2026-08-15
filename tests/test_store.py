@@ -6,7 +6,6 @@ from uuid import uuid4
 
 import pymysql
 import pytest
-
 from langgraph.store.base import (
     GetOp,
     Item,
@@ -15,7 +14,8 @@ from langgraph.store.base import (
     PutOp,
     SearchOp,
 )
-from langgraph.store.mysql import PyMySQLStore
+
+from langgraph.store.mysql import PyMySQLStore, StoreTableConfig
 from tests.conftest import (
     DEFAULT_BASE_URI,
     DEFAULT_URI,
@@ -30,6 +30,21 @@ STORES = [
     "sqlalchemy_engine",
     "sqlalchemy_pool",
 ]
+
+
+def test_custom_store_table_names_are_isolated(store: PyMySQLStore) -> None:
+    custom_store = PyMySQLStore(
+        store.conn,
+        table_config=StoreTableConfig(prefix="tenant_a_", store="tenant_a_documents"),
+    )
+    custom_store.setup()
+
+    namespace = ("shared",)
+    store.put(namespace, "key", {"source": "default"})
+    custom_store.put(namespace, "key", {"source": "custom"})
+
+    assert store.get(namespace, "key").value == {"source": "default"}
+    assert custom_store.get(namespace, "key").value == {"source": "custom"}
 
 
 @pytest.fixture(scope="function", params=STORES)

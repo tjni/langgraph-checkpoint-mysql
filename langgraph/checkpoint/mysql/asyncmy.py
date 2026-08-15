@@ -8,11 +8,12 @@ from typing import Any, cast
 
 from asyncmy import Connection, connect  # type: ignore
 from asyncmy.cursors import DictCursor  # type: ignore
+from langgraph.checkpoint.serde.base import SerializerProtocol
 from typing_extensions import Self, override
 
+from langgraph._mysql import CheckpointTableConfig
 from langgraph.checkpoint.mysql.aio_base import BaseAsyncMySQLSaver
 from langgraph.checkpoint.mysql.shallow import BaseShallowAsyncMySQLSaver
-from langgraph.checkpoint.serde.base import SerializerProtocol
 
 
 class AsyncMySaver(BaseAsyncMySQLSaver[Connection, DictCursor]):
@@ -43,6 +44,7 @@ class AsyncMySaver(BaseAsyncMySQLSaver[Connection, DictCursor]):
         conn_string: str,
         *,
         serde: SerializerProtocol | None = None,
+        table_config: CheckpointTableConfig | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new AsyncMySaver instance from a connection string.
 
@@ -59,7 +61,7 @@ class AsyncMySaver(BaseAsyncMySQLSaver[Connection, DictCursor]):
             **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            yield cls(conn=conn, serde=serde)
+            yield cls(conn=conn, serde=serde, table_config=table_config)
 
     @override
     @staticmethod
@@ -72,6 +74,8 @@ class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
         self,
         conn: Connection,
         serde: SerializerProtocol | None = None,
+        *,
+        table_config: CheckpointTableConfig | None = None,
     ) -> None:
         warnings.warn(
             "ShallowAsyncMySaver is deprecated as of version 2.0.15 and will be removed in 3.0.0. "
@@ -79,7 +83,7 @@ class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
             DeprecationWarning,
             stacklevel=2,
         )
-        super().__init__(conn, serde=serde)
+        super().__init__(conn, serde=serde, table_config=table_config)
 
     @classmethod
     @asynccontextmanager
@@ -88,6 +92,7 @@ class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
         conn_string: str,
         *,
         serde: SerializerProtocol | None = None,
+        table_config: CheckpointTableConfig | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new ShallowAsyncMySaver instance from a connection string.
 
@@ -104,7 +109,7 @@ class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
             **AsyncMySaver.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            yield cls(conn=conn, serde=serde)
+            yield cls(conn=conn, serde=serde, table_config=table_config)
 
     @override
     @staticmethod
@@ -112,4 +117,4 @@ class ShallowAsyncMySaver(BaseShallowAsyncMySQLSaver[Connection, DictCursor]):
         return cast(DictCursor, conn.cursor(DictCursor))
 
 
-__all__ = ["AsyncMySaver", "ShallowAsyncMySaver"]
+__all__ = ["AsyncMySaver", "CheckpointTableConfig", "ShallowAsyncMySaver"]

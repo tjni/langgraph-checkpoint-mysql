@@ -7,8 +7,6 @@ from contextlib import asynccontextmanager
 from typing import Any, Callable, Generic, cast
 
 import orjson
-
-from langgraph.checkpoint.mysql import _ainternal
 from langgraph.store.base import (
     GetOp,
     ListNamespacesOp,
@@ -18,6 +16,9 @@ from langgraph.store.base import (
     SearchOp,
 )
 from langgraph.store.base.batch import AsyncBatchedBaseStore
+
+from langgraph._mysql import StoreTableConfig
+from langgraph.checkpoint.mysql import _ainternal
 from langgraph.store.mysql.base import (
     BaseMySQLStore,
     Row,
@@ -42,8 +43,10 @@ class BaseAsyncMySQLStore(
         conn: _ainternal.Conn[_ainternal.C],
         *,
         deserializer: Callable[[bytes | orjson.Fragment], dict[str, Any]] | None = None,
+        table_config: StoreTableConfig | None = None,
     ) -> None:
         super().__init__()
+        self._configure_tables(table_config)
         self._deserializer = deserializer
         self.conn = conn
         self.lock = asyncio.Lock()
@@ -70,15 +73,21 @@ class BaseAsyncMySQLStore(
         the first time the store is used.
         """
 
-        async def _get_version(cur: _ainternal.R, table: str) -> int:
+        async def _get_version(cur: _ainternal.R) -> int:
             await cur.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS {table} (
+                self._render_sql(
+                    """
+                CREATE TABLE IF NOT EXISTS store_migrations (
                     v INTEGER PRIMARY KEY
                 )
             """
+                )
             )
-            await cur.execute(f"SELECT v FROM {table} ORDER BY v DESC LIMIT 1")
+            await cur.execute(
+                self._render_sql(
+                    "SELECT v FROM store_migrations ORDER BY v DESC LIMIT 1"
+                )
+            )
             row = await cur.fetchone()
             if row is None:
                 version = -1
@@ -88,13 +97,16 @@ class BaseAsyncMySQLStore(
 
         async with _ainternal.get_connection(self.conn) as conn:
             async with self._cursor(conn) as cur:
-                version = await _get_version(cur, table="store_migrations")
+                version = await _get_version(cur)
                 for v, sql in enumerate(
                     self.MIGRATIONS[version + 1 :], start=version + 1
                 ):
                     await cur.execute(sql)
                     await cur.execute(
-                        "INSERT INTO store_migrations (v) VALUES (%s)", (v,)
+                        self._render_sql(
+                            "INSERT INTO store_migrations (v) VALUES (%s)"
+                        ),
+                        (v,),
                     )
 
     async def _execute_batch(

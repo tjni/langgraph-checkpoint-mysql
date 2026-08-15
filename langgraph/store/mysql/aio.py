@@ -7,6 +7,7 @@ from typing import Any, cast
 import aiomysql  # type: ignore
 from typing_extensions import Self, override
 
+from langgraph._mysql import StoreTableConfig
 from langgraph.store.mysql.aio_base import BaseAsyncMySQLStore
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,8 @@ class AIOMySQLStore(BaseAsyncMySQLStore[aiomysql.Connection, aiomysql.DictCursor
     async def from_conn_string(
         cls,
         conn_string: str,
+        *,
+        table_config: StoreTableConfig | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new AIOMySQLStore instance from a connection string.
 
@@ -49,7 +52,7 @@ class AIOMySQLStore(BaseAsyncMySQLStore[aiomysql.Connection, aiomysql.DictCursor
             **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            yield cls(conn=conn)
+            yield cls(conn=conn, table_config=table_config)
 
     @override
     @staticmethod

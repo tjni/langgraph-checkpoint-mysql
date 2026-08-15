@@ -75,6 +75,65 @@ with PyMySQLSaver.from_conn_string(DB_URI) as checkpointer:
     list(checkpointer.list(read_config))
 ```
 
+### Custom table names
+
+Pass `CheckpointTableConfig` to namespace the checkpoint tables with a common
+prefix, override individual table names, or combine both approaches. Omitting
+`table_config` preserves the default table names and behavior.
+
+```python
+from langgraph.checkpoint.mysql import CheckpointTableConfig
+from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver
+
+table_config = CheckpointTableConfig(
+    prefix="my_app_",
+    checkpoints="graph_history",
+)
+
+with PyMySQLSaver.from_conn_string(
+    DB_URI,
+    table_config=table_config,
+) as checkpointer:
+    checkpointer.setup()
+```
+
+Explicit names are complete names and do not receive the prefix. The example
+above therefore uses `graph_history`, `my_app_checkpoint_migrations`,
+`my_app_checkpoint_blobs`, and `my_app_checkpoint_writes`.
+
+The available checkpoint fields and their defaults are:
+
+| Field | Default table |
+| --- | --- |
+| `migrations` | `checkpoint_migrations` |
+| `checkpoints` | `checkpoints` |
+| `blobs` | `checkpoint_blobs` |
+| `writes` | `checkpoint_writes` |
+
+For example, `CheckpointTableConfig(checkpoints="graph_history")` renames only
+the `checkpoints` table, while all unspecified tables keep their default names.
+The same configuration API is available for synchronous, asynchronous, and
+shallow savers.
+
+MySQL stores accept `StoreTableConfig`, with `migrations` and `store` as the
+individually configurable fields:
+
+```python
+from langgraph.store.mysql import PyMySQLStore, StoreTableConfig
+
+with PyMySQLStore.from_conn_string(
+    DB_URI,
+    table_config=StoreTableConfig(prefix="my_app_"),
+) as store:
+    store.setup()
+```
+
+> [!IMPORTANT]
+> A different configuration selects or creates a different set of tables. It
+> does not rename existing tables or migrate their data. Keep the same
+> configuration for every process that needs to share the same checkpoint or
+> store data.
+
 ### Async
 
 ```python

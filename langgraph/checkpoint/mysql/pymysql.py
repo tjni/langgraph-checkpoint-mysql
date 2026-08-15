@@ -7,13 +7,14 @@ from contextlib import contextmanager
 from typing import Any
 
 import pymysql
+from langgraph.checkpoint.serde.base import SerializerProtocol
 from pymysql.cursors import DictCursor
 from typing_extensions import Self, override
 
+from langgraph._mysql import CheckpointTableConfig
 from langgraph.checkpoint.mysql import BaseSyncMySQLSaver, _internal
 from langgraph.checkpoint.mysql import Conn as BaseConn
 from langgraph.checkpoint.mysql.shallow import BaseShallowSyncMySQLSaver
-from langgraph.checkpoint.serde.base import SerializerProtocol
 
 Conn = BaseConn[pymysql.Connection]  # type: ignore
 
@@ -44,6 +45,9 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
     def from_conn_string(
         cls,
         conn_string: str,
+        *,
+        serde: SerializerProtocol | None = None,
+        table_config: CheckpointTableConfig | None = None,
     ) -> Iterator[Self]:
         """Create a new PyMySQLSaver instance from a connection string.
 
@@ -60,7 +64,7 @@ class PyMySQLSaver(BaseSyncMySQLSaver[pymysql.Connection, DictCursor]):
             **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            yield cls(conn)
+            yield cls(conn, serde=serde, table_config=table_config)
 
     @override
     @staticmethod
@@ -73,6 +77,8 @@ class ShallowPyMySQLSaver(BaseShallowSyncMySQLSaver):
         self,
         conn: _internal.Conn,
         serde: SerializerProtocol | None = None,
+        *,
+        table_config: CheckpointTableConfig | None = None,
     ) -> None:
         warnings.warn(
             "ShallowPyMySQLSaver is deprecated as of version 2.0.15 and will be removed in 3.0.0. "
@@ -80,13 +86,16 @@ class ShallowPyMySQLSaver(BaseShallowSyncMySQLSaver):
             DeprecationWarning,
             stacklevel=2,
         )
-        super().__init__(conn, serde=serde)
+        super().__init__(conn, serde=serde, table_config=table_config)
 
     @classmethod
     @contextmanager
     def from_conn_string(
         cls,
         conn_string: str,
+        *,
+        serde: SerializerProtocol | None = None,
+        table_config: CheckpointTableConfig | None = None,
     ) -> Iterator[Self]:
         """Create a new ShallowPyMySQLSaver instance from a connection string.
 
@@ -103,7 +112,7 @@ class ShallowPyMySQLSaver(BaseShallowSyncMySQLSaver):
             **PyMySQLSaver.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            yield cls(conn)
+            yield cls(conn, serde=serde, table_config=table_config)
 
     @override
     @staticmethod
@@ -111,4 +120,9 @@ class ShallowPyMySQLSaver(BaseShallowSyncMySQLSaver):
         return conn.cursor(DictCursor)
 
 
-__all__ = ["PyMySQLSaver", "ShallowPyMySQLSaver", "Conn"]
+__all__ = [
+    "CheckpointTableConfig",
+    "Conn",
+    "PyMySQLSaver",
+    "ShallowPyMySQLSaver",
+]

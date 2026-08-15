@@ -6,15 +6,17 @@ from collections.abc import Sequence
 from typing import Any, Optional, cast
 
 from langchain_core.runnables import RunnableConfig
-
 from langgraph.checkpoint.base import (
     WRITES_IDX_MAP,
     BaseCheckpointSaver,
     ChannelVersions,
     get_checkpoint_id,
 )
-from langgraph.checkpoint.mysql.utils import mysql_mariadb_branch
+from langgraph.checkpoint.serde.base import SerializerProtocol
 from langgraph.checkpoint.serde.types import TASKS
+
+from langgraph._mysql import CheckpointTableConfig, render_sql
+from langgraph.checkpoint.mysql.utils import mysql_mariadb_branch
 
 MetadataInput = Optional[dict[str, Any]]
 
@@ -244,11 +246,39 @@ INSERT_CHECKPOINT_WRITES_SQL = """
 
 
 class BaseMySQLSaver(BaseCheckpointSaver[str]):
+    SELECT_SQL = SELECT_SQL
+    SELECT_PENDING_SENDS_SQL = SELECT_PENDING_SENDS_SQL
     MIGRATIONS = MIGRATIONS
     UPSERT_CHECKPOINT_BLOBS_SQL = UPSERT_CHECKPOINT_BLOBS_SQL
     UPSERT_CHECKPOINTS_SQL = UPSERT_CHECKPOINTS_SQL
     UPSERT_CHECKPOINT_WRITES_SQL = UPSERT_CHECKPOINT_WRITES_SQL
     INSERT_CHECKPOINT_WRITES_SQL = INSERT_CHECKPOINT_WRITES_SQL
+
+    def __init__(
+        self,
+        *,
+        serde: SerializerProtocol | None = None,
+        table_config: CheckpointTableConfig | None = None,
+    ) -> None:
+        super().__init__(serde=serde)
+        self.table_config = table_config or CheckpointTableConfig()
+        self.table_names = self.table_config.resolved()
+        self.MIGRATIONS = [self._render_sql(sql) for sql in self.MIGRATIONS]
+        self.SELECT_SQL = self._render_sql(self.SELECT_SQL)
+        self.SELECT_PENDING_SENDS_SQL = self._render_sql(self.SELECT_PENDING_SENDS_SQL)
+        self.UPSERT_CHECKPOINT_BLOBS_SQL = self._render_sql(
+            self.UPSERT_CHECKPOINT_BLOBS_SQL
+        )
+        self.UPSERT_CHECKPOINTS_SQL = self._render_sql(self.UPSERT_CHECKPOINTS_SQL)
+        self.UPSERT_CHECKPOINT_WRITES_SQL = self._render_sql(
+            self.UPSERT_CHECKPOINT_WRITES_SQL
+        )
+        self.INSERT_CHECKPOINT_WRITES_SQL = self._render_sql(
+            self.INSERT_CHECKPOINT_WRITES_SQL
+        )
+
+    def _render_sql(self, sql: str) -> str:
+        return render_sql(sql, self.table_names)
 
     def _migrate_pending_sends(
         self,
@@ -402,13 +432,11 @@ class BaseMySQLSaver(BaseCheckpointSaver[str]):
             param_values,
         )
 
-    @staticmethod
-    def _select_sql(where: str) -> str:
-        return SELECT_SQL.replace("{WHERE}", where)
+    def _select_sql(self, where: str) -> str:
+        return self.SELECT_SQL.replace("{WHERE}", where)
 
-    @staticmethod
-    def _select_pending_sends_sql(num_ids: int) -> str:
+    def _select_pending_sends_sql(self, num_ids: int) -> str:
         placeholders = ",".join(["%s"] * num_ids)
-        return SELECT_PENDING_SENDS_SQL.replace(
+        return self.SELECT_PENDING_SENDS_SQL.replace(
             "{CHECKPOINT_ID_PLACEHOLDERS}", placeholders
         )

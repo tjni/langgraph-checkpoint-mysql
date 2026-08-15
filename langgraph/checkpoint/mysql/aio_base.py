@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from typing import Any, Generic
 
 from langchain_core.runnables import RunnableConfig
-
 from langgraph.checkpoint.base import (
     WRITES_IDX_MAP,
     ChannelVersions,
@@ -18,6 +17,9 @@ from langgraph.checkpoint.base import (
     get_checkpoint_id,
     get_serializable_checkpoint_metadata,
 )
+from langgraph.checkpoint.serde.base import SerializerProtocol
+
+from langgraph._mysql import CheckpointTableConfig
 from langgraph.checkpoint.mysql import _ainternal
 from langgraph.checkpoint.mysql.base import BaseMySQLSaver
 from langgraph.checkpoint.mysql.utils import (
@@ -25,7 +27,6 @@ from langgraph.checkpoint.mysql.utils import (
     deserialize_pending_sends,
     deserialize_pending_writes,
 )
-from langgraph.checkpoint.serde.base import SerializerProtocol
 
 
 class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
@@ -35,8 +36,10 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         self,
         conn: _ainternal.Conn[_ainternal.C],
         serde: SerializerProtocol | None = None,
+        *,
+        table_config: CheckpointTableConfig | None = None,
     ) -> None:
-        super().__init__(serde=serde)
+        super().__init__(serde=serde, table_config=table_config)
 
         self.conn = conn
         self.lock = asyncio.Lock()
@@ -56,7 +59,9 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         async with self._cursor() as cur:
             await cur.execute(self.MIGRATIONS[0])
             await cur.execute(
-                "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
+                self._render_sql(
+                    "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
+                )
             )
             row = await cur.fetchone()
             if row is None:
@@ -69,7 +74,10 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
             ):
                 await cur.execute(migration)
                 await cur.execute(
-                    "INSERT INTO checkpoint_migrations (v) VALUES (%s)", (v,)
+                    self._render_sql(
+                        "INSERT INTO checkpoint_migrations (v) VALUES (%s)"
+                    ),
+                    (v,),
                 )
 
     async def alist(
@@ -318,15 +326,15 @@ class BaseAsyncMySQLSaver(BaseMySQLSaver, Generic[_ainternal.C, _ainternal.R]):
         """
         async with self._cursor(pipeline=True) as cur:
             await cur.execute(
-                "DELETE FROM checkpoints WHERE thread_id = %s",
+                self._render_sql("DELETE FROM checkpoints WHERE thread_id = %s"),
                 (str(thread_id),),
             )
             await cur.execute(
-                "DELETE FROM checkpoint_blobs WHERE thread_id = %s",
+                self._render_sql("DELETE FROM checkpoint_blobs WHERE thread_id = %s"),
                 (str(thread_id),),
             )
             await cur.execute(
-                "DELETE FROM checkpoint_writes WHERE thread_id = %s",
+                self._render_sql("DELETE FROM checkpoint_writes WHERE thread_id = %s"),
                 (str(thread_id),),
             )
 

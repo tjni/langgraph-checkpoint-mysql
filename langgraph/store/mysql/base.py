@@ -18,11 +18,6 @@ from typing import (
 )
 
 import orjson
-from typing_extensions import TypedDict
-
-from langgraph.checkpoint.mysql import _ainternal as _ainternal
-from langgraph.checkpoint.mysql import _internal as _internal
-from langgraph.checkpoint.mysql.utils import mysql_mariadb_branch
 from langgraph.store.base import (
     BaseStore,
     GetOp,
@@ -34,6 +29,12 @@ from langgraph.store.base import (
     SearchItem,
     SearchOp,
 )
+from typing_extensions import TypedDict
+
+from langgraph._mysql import StoreTableConfig, render_sql
+from langgraph.checkpoint.mysql import _ainternal as _ainternal
+from langgraph.checkpoint.mysql import _internal as _internal
+from langgraph.checkpoint.mysql.utils import mysql_mariadb_branch
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,14 @@ class BaseMySQLStore(Generic[C]):
     conn: C
     _deserializer: Callable[[bytes | orjson.Fragment], dict[str, Any]] | None
 
+    def _configure_tables(self, table_config: StoreTableConfig | None) -> None:
+        self.table_config = table_config or StoreTableConfig()
+        self.table_names = self.table_config.resolved()
+        self.MIGRATIONS = [self._render_sql(sql) for sql in self.MIGRATIONS]
+
+    def _render_sql(self, sql: str) -> str:
+        return render_sql(sql, self.table_names)
+
     def _get_batch_GET_ops_queries(
         self,
         get_ops: Sequence[tuple[int, GetOp]],
@@ -82,7 +91,7 @@ class BaseMySQLStore(Generic[C]):
                 WHERE prefix = %s AND `key` IN ({keys_to_query})
             """
             params = (_namespace_to_text(namespace), *keys)
-            results.append((query, params, namespace, items))
+            results.append((self._render_sql(query), params, namespace, items))
         return results
 
     def _prepare_batch_PUT_queries(
@@ -110,7 +119,7 @@ class BaseMySQLStore(Generic[C]):
                 namespace_groups[op.namespace].append(op.key)
             for namespace, keys in namespace_groups.items():
                 placeholders = ",".join(["%s"] * len(keys))
-                query = (
+                query = self._render_sql(
                     f"DELETE FROM store WHERE prefix = %s AND `key` IN ({placeholders})"
                 )
                 params = (_namespace_to_text(namespace), *keys)
@@ -135,7 +144,7 @@ class BaseMySQLStore(Generic[C]):
                     value = {mysql_mariadb_branch("new.value", "VALUE(value)")},
                     updated_at = CURRENT_TIMESTAMP
             """
-            queries.append((query, insertion_params))
+            queries.append((self._render_sql(query), insertion_params))
 
         return queries
 
@@ -190,7 +199,7 @@ class BaseMySQLStore(Generic[C]):
             base_query += " LIMIT %s OFFSET %s"
             params.extend([op.limit, op.offset])
 
-            queries.append((base_query, params))
+            queries.append((self._render_sql(base_query), params))
 
         return queries
 
@@ -239,7 +248,7 @@ class BaseMySQLStore(Generic[C]):
             query += " GROUP BY truncated_prefix"
             query += " ORDER BY truncated_prefix LIMIT %s OFFSET %s"
             params.extend([op.limit, op.offset])
-            queries.append((query, tuple(params)))
+            queries.append((self._render_sql(query), tuple(params)))
 
         return queries
 
@@ -291,8 +300,10 @@ class BaseSyncMySQLStore(
         conn: _internal.Conn[_internal.C],
         *,
         deserializer: Callable[[bytes | orjson.Fragment], dict[str, Any]] | None = None,
+        table_config: StoreTableConfig | None = None,
     ) -> None:
         super().__init__()
+        self._configure_tables(table_config)
         self._deserializer = deserializer
         self.conn = conn
         self.lock = threading.Lock()
@@ -428,15 +439,21 @@ class BaseSyncMySQLStore(
         the first time the store is used.
         """
 
-        def _get_version(cur: _internal.R, table: str) -> int:
+        def _get_version(cur: _internal.R) -> int:
             cur.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS {table} (
+                self._render_sql(
+                    """
+                CREATE TABLE IF NOT EXISTS store_migrations (
                     v INTEGER PRIMARY KEY
                 )
             """
+                )
             )
-            cur.execute(f"SELECT v FROM {table} ORDER BY v DESC LIMIT 1")
+            cur.execute(
+                self._render_sql(
+                    "SELECT v FROM store_migrations ORDER BY v DESC LIMIT 1"
+                )
+            )
             row = cur.fetchone()
             if row is None:
                 version = -1
@@ -445,10 +462,13 @@ class BaseSyncMySQLStore(
             return version
 
         with self._cursor() as cur:
-            version = _get_version(cur, table="store_migrations")
+            version = _get_version(cur)
             for v, sql in enumerate(self.MIGRATIONS[version + 1 :], start=version + 1):
                 cur.execute(sql)
-                cur.execute("INSERT INTO store_migrations (v) VALUES (%s)", (v,))
+                cur.execute(
+                    self._render_sql("INSERT INTO store_migrations (v) VALUES (%s)"),
+                    (v,),
+                )
 
 
 class Row(TypedDict):

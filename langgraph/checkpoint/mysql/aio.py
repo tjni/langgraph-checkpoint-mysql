@@ -7,12 +7,13 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import aiomysql  # type: ignore
+from langgraph.checkpoint.serde.base import SerializerProtocol
 from typing_extensions import Self, override
 
+from langgraph._mysql import CheckpointTableConfig
 from langgraph.checkpoint.mysql import _ainternal
 from langgraph.checkpoint.mysql.aio_base import BaseAsyncMySQLSaver
 from langgraph.checkpoint.mysql.shallow import BaseShallowAsyncMySQLSaver
-from langgraph.checkpoint.serde.base import SerializerProtocol
 
 Conn = _ainternal.Conn[aiomysql.Connection]  # For backward compatibility
 
@@ -43,6 +44,7 @@ class AIOMySQLSaver(BaseAsyncMySQLSaver[aiomysql.Connection, aiomysql.DictCursor
         conn_string: str,
         *,
         serde: SerializerProtocol | None = None,
+        table_config: CheckpointTableConfig | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new AIOMySQLSaver instance from a connection string.
 
@@ -59,7 +61,7 @@ class AIOMySQLSaver(BaseAsyncMySQLSaver[aiomysql.Connection, aiomysql.DictCursor
             **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            yield cls(conn=conn, serde=serde)
+            yield cls(conn=conn, serde=serde, table_config=table_config)
 
     @override
     @staticmethod
@@ -74,6 +76,8 @@ class ShallowAIOMySQLSaver(
         self,
         conn: aiomysql.Connection,
         serde: SerializerProtocol | None = None,
+        *,
+        table_config: CheckpointTableConfig | None = None,
     ) -> None:
         warnings.warn(
             "ShallowAIOMySQLSaver is deprecated as of version 2.0.15 and will be removed in 3.0.0. "
@@ -81,7 +85,7 @@ class ShallowAIOMySQLSaver(
             DeprecationWarning,
             stacklevel=2,
         )
-        super().__init__(conn, serde=serde)
+        super().__init__(conn, serde=serde, table_config=table_config)
 
     @classmethod
     @asynccontextmanager
@@ -90,6 +94,7 @@ class ShallowAIOMySQLSaver(
         conn_string: str,
         *,
         serde: SerializerProtocol | None = None,
+        table_config: CheckpointTableConfig | None = None,
     ) -> AsyncIterator[Self]:
         """Create a new ShallowAIOMySQLSaver instance from a connection string.
 
@@ -106,7 +111,7 @@ class ShallowAIOMySQLSaver(
             **AIOMySQLSaver.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            yield cls(conn=conn, serde=serde)
+            yield cls(conn=conn, serde=serde, table_config=table_config)
 
     @override
     @staticmethod
@@ -114,4 +119,9 @@ class ShallowAIOMySQLSaver(
         return cast(aiomysql.DictCursor, conn.cursor(aiomysql.DictCursor))
 
 
-__all__ = ["AIOMySQLSaver", "ShallowAIOMySQLSaver", "Conn"]
+__all__ = [
+    "AIOMySQLSaver",
+    "CheckpointTableConfig",
+    "Conn",
+    "ShallowAIOMySQLSaver",
+]

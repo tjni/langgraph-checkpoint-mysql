@@ -7,6 +7,7 @@ import pymysql
 from pymysql.cursors import DictCursor
 from typing_extensions import Self, override
 
+from langgraph._mysql import StoreTableConfig
 from langgraph.store.mysql.base import BaseSyncMySQLStore
 
 
@@ -34,6 +35,8 @@ class PyMySQLStore(BaseSyncMySQLStore[pymysql.Connection, DictCursor]):
     def from_conn_string(
         cls,
         conn_string: str,
+        *,
+        table_config: StoreTableConfig | None = None,
     ) -> Iterator[Self]:
         """Create a new PyMySQLStore instance from a connection string.
 
@@ -47,7 +50,7 @@ class PyMySQLStore(BaseSyncMySQLStore[pymysql.Connection, DictCursor]):
             **cls.parse_conn_string(conn_string),
             autocommit=True,
         ) as conn:
-            yield cls(conn)
+            yield cls(conn, table_config=table_config)
 
     @override
     @staticmethod
